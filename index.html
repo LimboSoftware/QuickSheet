@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1a22">
+  <meta name="description" content="40K QuickSheet - fast Warhammer 40,000 datasheet lookup">
+  <title>40K QuickSheet</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/quicksheet.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="topline">
+        <div class="brand">40K QUICKSHEET</div>
+        <button id="importBtn" class="btn">IMPORT LIST</button>
+        <button id="updateBtn" class="btn">UPDATE DATA</button>
+        <button id="armiesBtn" class="btn btn-subtle">ARMIES</button>
+        <div class="grow"></div>
+        <label class="wake-setting" for="wakeWord">Set wake word:</label>
+        <input id="wakeWord" class="wake-input" value="check" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="searchline">
+        <div class="search-wrap">
+          <span class="search-icon">⌕</span>
+          <input id="searchInput" class="search" placeholder="Search a unit…" autocomplete="off" spellcheck="false">
+          <button id="clearSearch" class="icon-btn" title="Clear search">×</button>
+        </div>
+        <button id="micToggle" class="btn mic-on">MIC ON</button>
+        <div id="voiceStatus" class="voice-status"><span class="voice-dot"></span>WAITING FOR “CHECK”</div>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside class="sidebar">
+        <div id="tabs" class="tabs"></div>
+        <div id="browser" class="browser"></div>
+      </aside>
+      <main id="cardPane" class="card-pane">
+        <div class="empty-card">
+          <div class="empty-title">40K QuickSheet</div>
+          <div>Select a unit, import a New Recruit JSON list, or say <b>“check Rangers”</b>.</div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <input id="fileInput" type="file" accept=".json,application/json" hidden>
+  <dialog id="armyDialog" class="modal">
+    <form method="dialog" class="modal-card">
+      <div class="modal-head"><h2>Select armies</h2><button value="cancel" class="close-btn">×</button></div>
+      <p>Select up to three for separate quick-swap tabs. More than three uses a combined tab.</p>
+      <div id="armyChecklist" class="army-checklist"></div>
+      <div class="modal-actions"><button id="applyArmies" value="default" class="btn">APPLY</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
