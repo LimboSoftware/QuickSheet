@@ -1,0 +1,10 @@
+{
+  "name":"40K QuickSheet",
+  "short_name":"QuickSheet",
+  "start_url":"./",
+  "scope":"./",
+  "display":"standalone",
+  "background_color":"#0d1820",
+  "theme_color":"#0e1a22",
+  "icons":[{"src":"icons/quicksheet.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
