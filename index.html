@@ -8,7 +8,7 @@
   <title>40K QuickSheet</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/quicksheet.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=0.5">
+  <link rel="stylesheet" href="styles.css?v=0.6">
 </head>
 <body>
   <div id="app">
@@ -55,7 +55,90 @@
       <div class="modal-actions"><button id="applyArmies" value="default" class="btn">APPLY</button></div>
     </form>
   </dialog>
+
+  <dialog id="rollDialog" class="modal roll-modal">
+    <form method="dialog" class="modal-card roll-card">
+      <div class="modal-head">
+        <div>
+          <h2 id="rollTitle">ROLL ATTACKS</h2>
+          <div id="rollSubtitle" class="roll-subtitle"></div>
+        </div>
+        <button value="cancel" class="close-btn" aria-label="Close">×</button>
+      </div>
+
+      <div class="roll-toolbar">
+        <label>Attack type
+          <select id="rollPhase">
+            <option value="ranged">SHOOTING</option>
+            <option value="melee">FIGHT</option>
+          </select>
+        </label>
+        <label>Enemy Toughness
+          <input id="enemyT" type="number" min="1" max="30" value="4">
+        </label>
+        <label>Enemy Save
+          <select id="enemySv">
+            <option>2+</option><option selected>3+</option><option>4+</option>
+            <option>5+</option><option>6+</option><option>7+</option>
+          </select>
+        </label>
+        <label>Invulnerable
+          <select id="enemyInv">
+            <option value="">NONE</option><option>2+</option><option>3+</option>
+            <option>4+</option><option>5+</option><option>6+</option>
+          </select>
+        </label>
+        <label>Target models
+          <input id="targetModels" type="number" min="1" max="50" value="5">
+        </label>
+      </div>
+
+      <div class="roll-options">
+        <label><input id="halfRange" type="checkbox"> Within half range</label>
+        <label><input id="targetCover" type="checkbox"> Target has cover</label>
+        <label><input id="remainedStationary" type="checkbox"> Remained stationary</label>
+        <label><input id="madeCharge" type="checkbox"> Unit charged</label>
+      </div>
+
+      <details class="roll-buffs">
+        <summary>BUFFS / DEBUFFS</summary>
+        <div class="buff-grid">
+          <label>Hit modifier
+            <select id="hitMod"><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option></select>
+          </label>
+          <label>Wound modifier
+            <select id="woundMod"><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option></select>
+          </label>
+          <label>Re-roll hits
+            <select id="rerollHits"><option value="none">NONE</option><option value="ones">1s</option><option value="failed">FAILED</option></select>
+          </label>
+          <label>Re-roll wounds
+            <select id="rerollWounds"><option value="none">NONE</option><option value="ones">1s</option><option value="failed">FAILED</option></select>
+          </label>
+          <label><input id="buffLethal" type="checkbox"> Lethal Hits</label>
+          <label>Sustained Hits
+            <select id="buffSustained"><option value="0">NONE</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+          </label>
+          <label><input id="buffDevastating" type="checkbox"> Devastating Wounds</label>
+          <label><input id="ignoreWeaponRules" type="checkbox"> Ignore weapon abilities</label>
+        </div>
+      </details>
+
+      <div class="roll-section-head">
+        <strong>EQUIPPED WEAPONS</strong>
+        <span>Counts come from the imported New Recruit list.</span>
+      </div>
+      <div id="rollWeapons" class="roll-weapons"></div>
+
+      <div class="roll-actions">
+        <div id="rollNotice" class="roll-notice"></div>
+        <button id="rollNowBtn" type="button" class="btn roll-now">ROLL DICE</button>
+      </div>
+      <div id="rollResults" class="roll-results"></div>
+    </form>
+  </dialog>
   <div id="toast" class="toast" aria-live="polite"></div>
-  <script src="app.js?v=0.5"></script>
+  <script src="app.js?v=0.6"></script>
+  <script src="roll.js?v=0.1"></script>
 </body>
 </html>
