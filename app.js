@@ -39,7 +39,11 @@ function renderUnit(u){
   if(abilities.length)right+=section('ABILITIES',rulesHtml(abilities));
   if(u.rules?.length)right+=collapsibleSection('CORE / UNIT RULES',rulesHtml(u.rules));
   const body='<div class="columns"><div>'+left+'</div><div>'+right+'</div></div>';
-  els.card.innerHTML='<article class="datasheet"><header class="sheet-head"><div class="sheet-title">'+esc(u.name)+'</div><div class="sheet-subtitle">'+esc(u.army||'')+(u.points!=null?' • '+esc(u.points)+' pts':'')+'</div></header><div class="stats">'+stats.map(k=>'<div class="stat"><div class="stat-k">'+(k==='Sv'?'SV':k==='InSv'?'INV':k)+'</div><div class="stat-v">'+esc(stat(u,k))+'</div></div>').join('')+'</div><div class="sheet-body">'+body+'</div><footer class="sheet-foot">KEYWORDS: '+esc((u.keywords||[]).join(', '))+'</footer></article>'
+  const imported=current()?.kind==='roster';
+  window.QS_CURRENT_UNIT=u;
+  window.QS_CURRENT_TAB=current();
+  const rollButton=imported?'<button id="rollUnitBtn" type="button" class="roll-unit-btn">⚄ ROLL</button>':'';
+  els.card.innerHTML='<article class="datasheet"><header class="sheet-head"><div class="sheet-head-row"><div><div class="sheet-title">'+esc(u.name)+'</div><div class="sheet-subtitle">'+esc(u.army||'')+(u.points!=null?' • '+esc(u.points)+' pts':'')+'</div></div>'+rollButton+'</div></header><div class="stats">'+stats.map(k=>'<div class="stat"><div class="stat-k">'+(k==='Sv'?'SV':k==='InSv'?'INV':k)+'</div><div class="stat-v">'+esc(stat(u,k))+'</div></div>').join('')+'</div><div class="sheet-body">'+body+'</div><footer class="sheet-foot">KEYWORDS: '+esc((u.keywords||[]).join(', '))+'</footer></article>'
 }
 function section(t,b){return '<section class="section"><div class="section-title">'+esc(t)+'</div><div class="section-body">'+b+'</div></section>'}
 function collapsibleSection(t,b){return '<details class="section collapsible-section"><summary class="section-title collapsible-title"><span>'+esc(t)+'</span><span class="collapse-chevron">▸</span></summary><div class="section-body">'+b+'</div></details>'}
@@ -78,9 +82,33 @@ function rosterUnits(doc){
       const low=(p.typeName||'').toLowerCase();
       const kind=low==='unit'?'stats':low.includes('weapon')?'weapons':'abilities';
       const rec={kind,name:p.name,chars,loadout:'standard'};
-      const k=profileKey(rec); if(!seen.has(k)){seen.add(k);profiles.push(rec)}
+      const k=profileKey(rec);
+      if(kind==='weapons'){
+        const qty=Math.max(1,Number(node.number)||1);
+        const existing=profiles.find(x=>profileKey(x)===k);
+        if(existing){
+          existing.equipped=(Number(existing.equipped)||1)+qty;
+        }else{
+          rec.equipped=qty;
+          rec.selectionName=node.name||p.name;
+          rec.selectionGroup=node.entryGroupId||node.group||node.id||node.name||p.name;
+          profiles.push(rec);
+        }
+      }else if(!seen.has(k)){
+        seen.add(k);profiles.push(rec);
+      }
     }
     for(const child of node.selections||[]) collectProfiles(child,profiles,seen);
+  }
+  function countModels(node){
+    let n=0;
+    function walk(x){
+      if(!x||typeof x!=='object')return;
+      if(x.type==='model')n+=Math.max(1,Number(x.number)||1);
+      for(const c of x.selections||[])walk(c);
+    }
+    for(const c of node.selections||[])walk(c);
+    return n||Math.max(1,Number(node.number)||1);
   }
   function collectRules(node, rules, seen){
     if(!node||typeof node!=='object')return;
@@ -106,7 +134,8 @@ function rosterUnits(doc){
         profiles,
         keywords:(s.categories||[]).map(x=>x.name),
         rules,
-        options:[]
+        options:[],
+        modelCount:countModels(s)
       });
     }
   }
@@ -122,5 +151,5 @@ const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
 function stopVoice(){if(state.recognition){try{state.recognition.onend=null;state.recognition.abort()}catch{}state.recognition=null}}
 function restartVoice(){stopVoice();if(!state.micOn||!Speech)return;const r=new Speech();state.recognition=r;r.continuous=true;r.interimResults=false;r.lang='en-GB';r.onresult=e=>{const text=norm(e.results[e.results.length-1][0].transcript),wake=norm(els.wake.value)||'check';let cmd='';if(state.wakeArmed)cmd=text;else if(text===wake){state.wakeArmed=true;updateVoice();return}else if(text.startsWith(wake+' '))cmd=text.slice(wake.length).trim();else return;if(cmd==='switch'){state.wakeArmed=false;cycle();updateVoice();return}if(['scoreboard','score board','scores','score'].includes(cmd)){location.href='./scoreboard/';return}if(['strats','stratagems','strategems','core strats'].includes(cmd)){renderRef('strats');state.wakeArmed=false;updateVoice();return}const m=matches(cmd,unitsFor())[0];if(m){els.search.value=cmd;renderBrowser();renderUnit(m.u);state.wakeArmed=false;updateVoice()}};r.onend=()=>{if(state.micOn)setTimeout(restartVoice,400)};r.onerror=()=>{};try{r.start()}catch{}}
 function setupVoice(){updateMic();if(!Speech){state.micOn=false;updateMic();els.status.textContent='VOICE NOT SUPPORTED';return}restartVoice();updateVoice()}
-loadSaved();load().catch(e=>{console.error(e);els.card.innerHTML='<div class="empty-card"><div class="empty-title">Could not load data</div><div>'+esc(e.message)+'</div></div>'});if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./service-worker.js?v=0.5').catch(()=>{});
+loadSaved();load().catch(e=>{console.error(e);els.card.innerHTML='<div class="empty-card"><div class="empty-title">Could not load data</div><div>'+esc(e.message)+'</div></div>'});if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./service-worker.js?v=0.6').catch(()=>{});
 })();
