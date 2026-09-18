@@ -1,8 +1,10 @@
-name: Deploy QuickSheet Pages
+name: Build full data and deploy QuickSheet
 on:
   workflow_dispatch:
   push:
     branches: [main]
+  schedule:
+    - cron: '17 5 * * *'
 
 permissions:
   contents: read
@@ -14,17 +16,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build current 11th-edition data
+        run: python tools/build_data.py
+
+      - name: Show generated data summary
+        run: |
+          cat data/meta.json
+          du -h data/units.json data/reference.json
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    needs: build
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
