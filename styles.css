@@ -19,3 +19,35 @@ button,input{font:inherit}.topbar{flex:0 0 auto;padding:14px 16px 12px;backgroun
 .collapsible-title::-webkit-details-marker{display:none}
 .collapse-chevron{display:inline-block;font-size:20px;line-height:1;transition:transform .15s ease}
 .collapsible-section[open] .collapse-chevron{transform:rotate(90deg)}
+
+.sheet-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.roll-unit-btn{flex:0 0 auto;border:1px solid #d6e6e2;background:#f0eee4;color:#143843;font-size:18px;font-weight:950;padding:12px 18px;border-radius:4px;cursor:pointer;box-shadow:0 3px 0 #0a2c35}
+.roll-unit-btn:hover{background:white}.roll-unit-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #0a2c35}
+.roll-modal{padding:0;max-width:none;max-height:none}
+.roll-card{width:min(1120px,94vw);max-height:90vh;overflow:auto;padding:18px}
+.roll-subtitle{color:#9db1b6;margin-top:4px}
+.roll-toolbar{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:9px;margin:14px 0 10px}
+.roll-toolbar label,.buff-grid label{display:flex;flex-direction:column;gap:5px;color:#abc0c5;font-size:12px;font-weight:800}
+.roll-toolbar input,.roll-toolbar select,.buff-grid select{min-height:40px;background:#081319;border:1px solid #607981;color:white;border-radius:3px;padding:7px 9px;font-size:16px}
+.roll-options{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
+.roll-options label,.buff-grid label:has(input[type=checkbox]){display:flex;flex-direction:row;align-items:center;gap:7px;background:#0d1c24;border:1px solid #354e58;color:#d7e4e6;padding:8px 10px;border-radius:3px;font-size:13px}
+.roll-options input,.buff-grid input[type=checkbox]{width:20px;height:20px}
+.roll-buffs{border:1px solid #405a64;background:#10232c;margin:10px 0 14px}
+.roll-buffs summary{cursor:pointer;padding:11px 12px;font-weight:950;letter-spacing:.06em;color:#d9e7e8}
+.buff-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;padding:0 12px 12px}
+.roll-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#dce8ea;margin:6px 0 8px}
+.roll-section-head strong{letter-spacing:.08em}.roll-section-head span{font-size:12px;color:#8ea5aa}
+.roll-weapons{border:1px solid #405761;background:#0d1a21}
+.roll-weapon-row{display:grid;grid-template-columns:34px minmax(210px,1.4fr) 90px minmax(330px,1fr);gap:10px;align-items:center;padding:10px;border-bottom:1px solid #2d424b}
+.roll-weapon-row:last-child{border-bottom:0}
+.roll-weapon-check input{width:22px;height:22px}
+.roll-weapon-main{min-width:0}.roll-weapon-main strong{display:block;color:#f0f5f5;font-size:15px}.roll-tags{display:block;color:#95acb2;font-size:11px;margin-top:3px;white-space:normal}.roll-alt{display:inline-block;margin-left:8px;color:#d7c486;font-size:10px;text-transform:uppercase}
+.roll-qty{display:flex;align-items:center;gap:5px;color:#a9bbc0;font-size:12px;font-weight:800}.roll-qty input{width:52px;background:#071218;border:1px solid #5b727a;color:white;padding:7px}
+.roll-statline{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}.roll-statline span{background:#182d36;border:1px solid #38515a;padding:6px;text-align:center;color:#91a8ad;font-size:10px}.roll-statline b{display:block;color:white;font-size:16px;margin-top:2px}
+.roll-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}.roll-notice{color:#9db0b5;font-size:12px}.roll-now{background:#216055;border-color:#9bc7bd;font-size:16px}
+.roll-results{margin-top:12px}.roll-total{display:flex;align-items:baseline;gap:12px;background:#204c57;border:1px solid #729098;color:white;padding:12px 14px;margin-bottom:8px}.roll-total span{font-size:12px;font-weight:900;letter-spacing:.08em}.roll-total strong{font-size:34px}.roll-total small{color:#c9d8da}
+.roll-result-card{background:#f3efe6;color:#172329;border:1px solid #6c797b;margin-bottom:8px}.roll-result-head{display:flex;justify-content:space-between;gap:12px;background:#748782;color:white;padding:8px 10px}.roll-result-head span{font-size:12px;align-self:center}
+.roll-result-grid{display:grid;grid-template-columns:repeat(4,1fr)}.roll-result-grid div{text-align:center;padding:10px;border-right:1px solid #c5c2b9}.roll-result-grid div:last-child{border-right:0}.roll-result-grid span{display:block;font-size:10px;font-weight:900;color:#657378}.roll-result-grid b{font-size:26px}
+.roll-result-meta{padding:8px 10px;border-top:1px solid #cdc9bd;color:#56656a;font-size:12px}.roll-empty{padding:18px;text-align:center;color:#9db0b5}
+@media(max-width:950px){.roll-toolbar{grid-template-columns:repeat(3,1fr)}.buff-grid{grid-template-columns:repeat(2,1fr)}.roll-weapon-row{grid-template-columns:30px 1fr 80px}.roll-statline{grid-column:2 / -1}.roll-card{width:96vw}}
+@media(max-width:620px){.sheet-head-row{align-items:center}.roll-unit-btn{font-size:15px;padding:10px 12px}.roll-toolbar{grid-template-columns:repeat(2,1fr)}.buff-grid{grid-template-columns:1fr}.roll-section-head{align-items:flex-start;flex-direction:column}.roll-result-grid{grid-template-columns:repeat(2,1fr)}}
