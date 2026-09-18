@@ -266,6 +266,82 @@ def rule_card(card:dict,det='',fac=''):
         if d:blocks.append(d)
     return {'name':name,'description':'\n\n'.join(blocks),'detachment':det,'faction':fac}
 
+def walk_dicts(obj: Any):
+    stack=[obj]
+    while stack:
+        x=stack.pop()
+        if isinstance(x,dict):
+            yield x
+            stack.extend(x.values())
+        elif isinstance(x,list):
+            stack.extend(x)
+
+def bsdata_named_rule(docs:list[tuple[str,dict]], name:str)->dict|None:
+    want=norm(name)
+    for _,doc in docs:
+        for x in walk_dicts(doc):
+            if norm(x.get('name',''))!=want:
+                continue
+            desc=x.get('description')
+            if isinstance(desc,dict):
+                desc=desc.get('$text','')
+            if isinstance(desc,str) and desc.strip():
+                return {'name':name,'description':clean(desc),'detachment':'','faction':'Asuryani'}
+    return None
+
+def bsdata_named_profiles(docs:list[tuple[str,dict]], container_name:str)->list[dict]:
+    want=norm(container_name)
+    for _,doc in docs:
+        for x in walk_dicts(doc):
+            if norm(x.get('name',''))!=want:
+                continue
+            out=[]
+            for y in walk_dicts(x):
+                if not isinstance(y,dict) or not y.get('typeName') or norm(y.get('typeName'))!='abilities':
+                    continue
+                chars={}
+                for c in y.get('characteristics',[]) or []:
+                    if isinstance(c,dict):
+                        chars[norm(c.get('name',''))]=clean(c.get('$text',''))
+                desc=chars.get('description','')
+                if y.get('name') and desc:
+                    out.append({'name':str(y.get('name')),'description':desc,'detachment':'','faction':'Asuryani'})
+            if out:
+                seen=set(); ded=[]
+                for r in out:
+                    k=(norm(r['name']),norm(r['description']))
+                    if k not in seen:
+                        seen.add(k);ded.append(r)
+                return ded
+    return []
+
+def enrich_reference_from_bsdata(refs:dict, bsdocs:list[tuple[str,dict]])->None:
+    # Some community GDC army rules intentionally contain image/accordion
+    # placeholders. BSData has the textual Battle Focus token table and Agile
+    # Manoeuvre profiles, so use it to fill the missing Aeldari reference card.
+    fac=None
+    for d in refs.get('factions',{}).values():
+        if norm(d.get('name')) in {'asuryani','aeldari'} or norm(d.get('source_alias'))=='aeldari':
+            fac=d;break
+    if not fac:
+        return
+    battle=bsdata_named_rule(bsdocs,'Battle Focus')
+    disparate=bsdata_named_rule(bsdocs,'Disparate Paths')
+    manoeuvres=bsdata_named_profiles(bsdocs,'Battle Focus - Agile Manoeuvres')
+    current=[r for r in fac.get('army_rules',[]) if norm(r.get('name')) not in {'battle focus','disparate paths'}]
+    merged=[]
+    if battle:
+        merged.append(battle)
+    else:
+        merged.extend(r for r in fac.get('army_rules',[]) if norm(r.get('name'))=='battle focus')
+    if disparate:
+        merged.append(disparate)
+    if manoeuvres:
+        merged.append({'name':'Agile Manoeuvres','description':'Battle Focus manoeuvres available to eligible units.','detachment':'','faction':'Asuryani'})
+        merged.extend(manoeuvres)
+    merged.extend(current)
+    fac['army_rules']=merged
+
 def parse_reference(docs:list[tuple[str,dict]])->dict:
     facs={}
     for filename,doc in docs:
@@ -300,7 +376,7 @@ def parse_reference(docs:list[tuple[str,dict]])->dict:
             if n and n not in dets:dets.append(n)
         source=Path(filename).name;alias=re.sub(r'[_-]+',' ',Path(source).stem).strip()
         facs[norm(name)]={'name':name,'parent_name':gtext(doc.get('parent_name')),'source_file':source,'source_alias':alias,'stratagems':strats,'army_rules':army,'detachment_rules':detr,'detachments':dets}
-    return {'cache_version':1,'fetched_at':time.strftime('%Y-%m-%d %H:%M:%S UTC',time.gmtime()),'factions':facs,'core_stratagems':CORE_STRATAGEMS}
+    return {'cache_version':2,'fetched_at':time.strftime('%Y-%m-%d %H:%M:%S UTC',time.gmtime()),'factions':facs,'core_stratagems':CORE_STRATAGEMS}
 
 def main():
     OUT.mkdir(exist_ok=True)
@@ -310,7 +386,8 @@ def main():
     print('Downloading reference data…')
     gdocs=docs_from_tar(GDC_URL,lambda p:len(p.parts)==4 and p.parts[-3:-1]==('11th','gdc') and p.suffix.lower()=='.json')
     refs=parse_reference(gdocs)
-    ud={'cache_version':1,'fetched_at':time.strftime('%Y-%m-%d %H:%M:%S UTC',time.gmtime()),'source':'BSData/wh40k-11e','units':[asdict(u) for u in units]}
+    enrich_reference_from_bsdata(refs,bsdocs)
+    ud={'cache_version':2,'fetched_at':time.strftime('%Y-%m-%d %H:%M:%S UTC',time.gmtime()),'source':'BSData/wh40k-11e','units':[asdict(u) for u in units]}
     (OUT/'units.json').write_text(json.dumps(ud,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
     (OUT/'reference.json').write_text(json.dumps(refs,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
     meta={'generated_at':time.strftime('%Y-%m-%d %H:%M UTC',time.gmtime()),'unit_count':len(units),'army_count':len(set(u.army for u in units)),'reference_factions':len(refs['factions']),'sources':['BSData/wh40k-11e','game-datacards/datasources 11th/gdc']}
