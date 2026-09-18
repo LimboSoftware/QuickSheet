@@ -13,7 +13,7 @@ function matches(q,units){return units.map(u=>({u,s:score(q,u.name)})).filter(x=
 function group(u){const k=new Set((u.keywords||[]).map(norm));if(k.has('epic hero'))return'EPIC CHARACTERS';if(k.has('character'))return'CHARACTERS';if(k.has('infantry'))return'INFANTRY';if(k.has('mounted'))return'MOUNTED';if(k.has('vehicle'))return'VEHICLES';if(k.has('monster'))return'MONSTERS';if(k.has('aircraft'))return'AIRCRAFT';if(k.has('beast'))return'BEASTS';if(k.has('swarm'))return'SWARMS';if(k.has('fortification'))return'FORTIFICATIONS';return'OTHER'}
 function save(){localStorage.setItem('qs.web',JSON.stringify({selectedArmies:state.selectedArmies,wake:els.wake.value,micOn:state.micOn,rosters:state.rosters,activeTab:state.activeTab}))}
 function loadSaved(){try{const p=JSON.parse(localStorage.getItem('qs.web')||'{}');state.selectedArmies=p.selectedArmies||[];state.rosters=p.rosters||[];state.micOn=p.micOn!==false;state.activeTab=p.activeTab||null;els.wake.value=p.wake||'check'}catch{}}
-async function load(){const [u,r]=await Promise.all([fetch('data/units.json').then(x=>x.json()),fetch('data/reference.json').then(x=>x.json())]);state.units=Array.isArray(u)?u:(u.units||[]);state.reference=r||{factions:{}};const armies=[...new Set(state.units.map(x=>x.army).filter(Boolean))].sort();if(!state.selectedArmies.length)state.selectedArmies=armies.slice(0,1);state.selectedArmies=state.selectedArmies.filter(a=>armies.includes(a));buildTabs();renderAll();populateArmyDialog();setupVoice()}
+async function load(){const [u,r]=await Promise.all([fetch('data/units.json',{cache:'no-store'}).then(x=>x.json()),fetch('data/reference.json',{cache:'no-store'}).then(x=>x.json())]);state.units=Array.isArray(u)?u:(u.units||[]);state.reference=r||{factions:{}};const armies=[...new Set(state.units.map(x=>x.army).filter(Boolean))].sort();if(!state.selectedArmies.length)state.selectedArmies=armies.slice(0,1);state.selectedArmies=state.selectedArmies.filter(a=>armies.includes(a));buildTabs();renderAll();populateArmyDialog();setupVoice()}
 function buildTabs(){const t=[];if(state.selectedArmies.length<=3)state.selectedArmies.forEach(a=>t.push({id:'army:'+a,label:a.replace(/^(Imperium|Chaos|Xenos) - /,''),kind:'army',army:a}));else if(state.selectedArmies.length)t.push({id:'combined',label:state.selectedArmies.length+' ARMIES',kind:'combined',armies:[...state.selectedArmies]});for(const r of state.rosters)t.push({id:'roster:'+r.id,label:r.label,kind:'roster',roster:r});state.tabs=t;if(!t.some(x=>x.id===state.activeTab))state.activeTab=t[0]?.id||null}
 function current(){return state.tabs.find(x=>x.id===state.activeTab)}
 function unitsFor(tab=current()){if(!tab)return[];if(tab.kind==='army')return state.units.filter(u=>u.army===tab.army);if(tab.kind==='combined')return state.units.filter(u=>tab.armies.includes(u.army));if(tab.kind==='roster')return tab.roster.units||[];return[]}
@@ -50,7 +50,7 @@ function renderRef(kind){
   let entries=kind==='strats'?(d.stratagems||[]):kind==='detach'?(d.detachment_rules||[]):(d.army_rules||[]);
   if(kind==='strats'&&tab?.kind==='roster'&&tab.roster.detachments?.length){
     const wanted=new Set(tab.roster.detachments.map(norm));
-    entries=entries.filter(x=>!x.detachment||wanted.has(norm(x.detachment)));
+    entries=entries.filter(x=>x.detachment&&wanted.has(norm(x.detachment)));
   }
   let html='';
   if(kind==='strats'){
@@ -63,10 +63,53 @@ function renderRef(kind){
   els.card.innerHTML='<article class="datasheet reference-page"><header class="sheet-head"><div class="sheet-title">'+title+'</div><div class="sheet-subtitle">'+esc(armyName())+'</div></header><div class="sheet-body">'+html+'</div></article>'
 }
 function populateArmyDialog(){const a=[...new Set(state.units.map(x=>x.army).filter(Boolean))].sort();els.checklist.innerHTML=a.map(x=>'<label class="army-check"><input type="checkbox" value="'+esc(x)+'" '+(state.selectedArmies.includes(x)?'checked':'')+'><span>'+esc(x)+'</span></label>').join('')}
-function rosterUnits(doc){const out=[];function walk(n,army){if(!n||typeof n!=='object')return;if((n.type==='unit'||n.type==='model')&&n.name){const prof=[];for(const p of n.profiles||[]){const chars={};for(const c of p.characteristics||[])chars[c.name]=c.$text||'';prof.push({kind:(p.typeName||'').toLowerCase()==='unit'?'stats':(p.typeName||'').toLowerCase().includes('weapon')?'weapons':'abilities',name:p.name,chars,loadout:'standard'})}for(const s of n.selections||[]){for(const p of s.profiles||[]){const chars={};for(const c of p.characteristics||[])chars[c.name]=c.$text||'';const low=(p.typeName||'').toLowerCase();if(low.includes('weapon'))prof.push({kind:'weapons',name:p.name,chars,loadout:'standard'})}}out.push({name:n.name,army,bs_id:'r-'+(n.id||Math.random()),points:(n.costs||[]).find(x=>x.name==='pts')?.value,profiles:prof,keywords:(n.categories||[]).map(x=>x.name),rules:n.rules||[],options:[]})}for(const c of n.selections||[])walk(c,army)}for(const f of doc?.roster?.forces||[]){const army=f.catalogueName||f.name||'Imported';for(const s of f.selections||[])walk(s,army)}return out}
+function rosterUnits(doc){
+  const out=[];
+  const profileKey=p=>JSON.stringify([p.kind,p.name,p.loadout,Object.entries(p.chars||{}).sort()]);
+  function collectProfiles(node, profiles, seen){
+    if(!node||typeof node!=='object')return;
+    for(const p of node.profiles||[]){
+      const chars={}; for(const c of p.characteristics||[]) chars[c.name]=c.$text||'';
+      const low=(p.typeName||'').toLowerCase();
+      const kind=low==='unit'?'stats':low.includes('weapon')?'weapons':'abilities';
+      const rec={kind,name:p.name,chars,loadout:'standard'};
+      const k=profileKey(rec); if(!seen.has(k)){seen.add(k);profiles.push(rec)}
+    }
+    for(const child of node.selections||[]) collectProfiles(child,profiles,seen);
+  }
+  function collectRules(node, rules, seen){
+    if(!node||typeof node!=='object')return;
+    for(const r of node.rules||[]){
+      const rec={name:r.name||'Rule',description:r.description||''};
+      const k=norm(rec.name)+'|'+norm(rec.description);
+      if(!seen.has(k)){seen.add(k);rules.push(rec)}
+    }
+    for(const child of node.selections||[]) collectRules(child,rules,seen);
+  }
+  for(const force of doc?.roster?.forces||[]){
+    const army=force.catalogueName||force.name||'Imported';
+    for(const s of force.selections||[]){
+      if(!['unit','model'].includes(s.type)||!s.name) continue;
+      const profiles=[], pseen=new Set(), rules=[], rseen=new Set();
+      collectProfiles(s,profiles,pseen);
+      collectRules(s,rules,rseen);
+      out.push({
+        name:s.name,
+        army,
+        bs_id:'r-'+(s.id||Math.random()),
+        points:(s.costs||[]).find(x=>x.name==='pts')?.value,
+        profiles,
+        keywords:(s.categories||[]).map(x=>x.name),
+        rules,
+        options:[]
+      });
+    }
+  }
+  return out
+}
 function rosterDetachments(doc){const out=[];function walk(n){if(!n||typeof n!=='object')return;if(String(n.group||'').toLowerCase()==='detachment'&&n.name&&!out.includes(n.name))out.push(n.name);for(const c of n.selections||[])walk(c)}for(const f of doc?.roster?.forces||[])for(const s of f.selections||[])walk(s);return out}
 els.file.onchange=async()=>{const f=els.file.files?.[0];if(!f)return;try{const d=JSON.parse(await f.text()),units=rosterUnits(d);if(!units.length)throw Error('No units found');const id='r'+Date.now(),label=d.roster?.name||f.name.replace(/\.json$/i,'');state.rosters.push({id,label,army:units[0].army,units,detachments:rosterDetachments(d)});state.activeTab='roster:'+id;save();renderAll();toast('Imported '+label)}catch(e){alert('Could not import list: '+e.message)}finally{els.file.value=''}};
-$('#importBtn').onclick=()=>els.file.click();$('#updateBtn').onclick=()=>location.reload();$('#armiesBtn').onclick=()=>{populateArmyDialog();els.dialog.showModal()};$('#applyArmies').onclick=e=>{e.preventDefault();state.selectedArmies=[...els.checklist.querySelectorAll('input:checked')].map(x=>x.value);buildTabs();state.activeTab=state.tabs[0]?.id||null;save();els.dialog.close();renderAll()};els.search.oninput=renderBrowser;$('#clearSearch').onclick=()=>{els.search.value='';renderBrowser()};els.wake.onchange=()=>{els.wake.value=norm(els.wake.value)||'check';save();restartVoice()};els.mic.onclick=()=>{state.micOn=!state.micOn;save();state.micOn?restartVoice():stopVoice();updateMic();updateVoice()};
+$('#importBtn').onclick=()=>els.file.click();$('#updateBtn').onclick=()=>{if('serviceWorker'in navigator)navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.update()))).finally(()=>location.reload());else location.reload()};$('#armiesBtn').onclick=()=>{populateArmyDialog();els.dialog.showModal()};$('#applyArmies').onclick=e=>{e.preventDefault();state.selectedArmies=[...els.checklist.querySelectorAll('input:checked')].map(x=>x.value);buildTabs();state.activeTab=state.tabs[0]?.id||null;save();els.dialog.close();renderAll()};els.search.oninput=renderBrowser;$('#clearSearch').onclick=()=>{els.search.value='';renderBrowser()};els.wake.onchange=()=>{els.wake.value=norm(els.wake.value)||'check';save();restartVoice()};els.mic.onclick=()=>{state.micOn=!state.micOn;save();state.micOn?restartVoice():stopVoice();updateMic();updateVoice()};
 function updateMic(){els.mic.textContent=state.micOn?'MIC ON':'MIC OFF';els.mic.className='btn '+(state.micOn?'mic-on':'mic-off')}
 function updateVoice(){const w=norm(els.wake.value)||'check';els.status.innerHTML='<span class="voice-dot"></span>'+(state.micOn?(state.wakeArmed?'LISTENING…':'WAITING FOR “'+esc(w.toUpperCase())+'”'):'MIC OFF')}
 function cycle(){if(!state.tabs.length)return;let i=state.tabs.findIndex(x=>x.id===state.activeTab);state.activeTab=state.tabs[(i+1)%state.tabs.length].id;els.search.value='';save();renderAll();toast('Switched list')}
@@ -74,5 +117,5 @@ const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
 function stopVoice(){if(state.recognition){try{state.recognition.onend=null;state.recognition.abort()}catch{}state.recognition=null}}
 function restartVoice(){stopVoice();if(!state.micOn||!Speech)return;const r=new Speech();state.recognition=r;r.continuous=true;r.interimResults=false;r.lang='en-GB';r.onresult=e=>{const text=norm(e.results[e.results.length-1][0].transcript),wake=norm(els.wake.value)||'check';let cmd='';if(state.wakeArmed)cmd=text;else if(text===wake){state.wakeArmed=true;updateVoice();return}else if(text.startsWith(wake+' '))cmd=text.slice(wake.length).trim();else return;if(cmd==='switch'){state.wakeArmed=false;cycle();updateVoice();return}if(['strats','stratagems','strategems','core strats'].includes(cmd)){renderRef('strats');state.wakeArmed=false;updateVoice();return}const m=matches(cmd,unitsFor())[0];if(m){els.search.value=cmd;renderBrowser();renderUnit(m.u);state.wakeArmed=false;updateVoice()}};r.onend=()=>{if(state.micOn)setTimeout(restartVoice,400)};r.onerror=()=>{};try{r.start()}catch{}}
 function setupVoice(){updateMic();if(!Speech){state.micOn=false;updateMic();els.status.textContent='VOICE NOT SUPPORTED';return}restartVoice();updateVoice()}
-loadSaved();load().catch(e=>{console.error(e);els.card.innerHTML='<div class="empty-card"><div class="empty-title">Could not load data</div><div>'+esc(e.message)+'</div></div>'});if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+loadSaved();load().catch(e=>{console.error(e);els.card.innerHTML='<div class="empty-card"><div class="empty-title">Could not load data</div><div>'+esc(e.message)+'</div></div>'});if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./service-worker.js?v=0.4').catch(()=>{});
 })();
