@@ -58,7 +58,11 @@ function renderRef(kind){
     const core=state.reference.core_stratagems||[];
     html+=section('CORE STRATAGEMS',core.map(x=>'<div class="strat"><div class="strat-name">'+esc(x.name||'')+'</div><div class="strat-desc">'+esc(x.description||'')+'</div></div>').join(''));
   } else {
-    html+=section(title,entries.length?entries.map(x=>'<div class="strat"><div class="strat-name">'+esc(x.name||'')+'</div><div class="strat-desc">'+esc(x.description||'')+'</div></div>').join(''):'<div class="rule-desc">No data loaded yet.</div>');
+    if(kind==='detach'&&tab?.kind==='roster'&&tab.roster.detachments?.length){
+      const wanted=new Set(tab.roster.detachments.map(norm));
+      entries=entries.filter(x=>x.detachment&&wanted.has(norm(x.detachment)));
+    }
+    html+=section(title,entries.length?entries.map(x=>'<div class="strat"><div class="strat-name">'+esc(x.name||'')+'</div><div class="strat-desc">'+esc(x.description||'')+'</div></div>').join(''):'<div class="rule-desc">No matching detachment rules were found.</div>');
   }
   els.card.innerHTML='<article class="datasheet reference-page"><header class="sheet-head"><div class="sheet-title">'+title+'</div><div class="sheet-subtitle">'+esc(armyName())+'</div></header><div class="sheet-body">'+html+'</div></article>'
 }
