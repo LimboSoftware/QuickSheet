@@ -64,7 +64,7 @@ function weaponAbilities(p){
   let m=k.match(/rapid fire\s+([0-9d+\-]+)/); if(m)out.rapid=m[1];
   m=k.match(/melta\s+([0-9d+\-]+)/); if(m)out.melta=m[1];
   m=k.match(/sustained hits\s+([0-9d+\-]+)/); if(m)out.sustained=m[1];
-  const re=/anti\s+([a-z]+)\s+(\d+)\+/g;
+  const re=/anti(?:-|\s+)([a-z]+)\s+(\d+)\+/g;
   while((m=re.exec(k)))out.anti.push({keyword:m[1].toUpperCase(),threshold:Number(m[2])});
   return out;
 }
@@ -131,6 +131,21 @@ function rollWound(target,mod,reroll,antiThreshold){
 function damageRoll(expr,melta){
   return Math.max(0,rollExpr(expr)+(melta||0));
 }
+function damageGroups(events){
+  const counts=new Map();
+  for(const value of events||[]){
+    const n=Math.max(0,Number(value)||0);
+    counts.set(n,(counts.get(n)||0)+1);
+  }
+  return [...counts.entries()].sort((a,b)=>b[0]-a[0]).map(([damage,count])=>({damage,count,total:damage*count}));
+}
+function damageBreakdown(events){
+  const groups=damageGroups(events);
+  if(!groups.length)return '0';
+  const parts=groups.map(g=>g.damage+' × '+g.count);
+  const total=groups.reduce((n,g)=>n+g.total,0);
+  return parts.join(' + ')+' = '+total;
+}
 function rollOneWeapon(p,qty,settings){
   const c=p.chars||{},ab=settings.ignore?{
     blast:false,torrent:false,twin:false,lethal:false,dev:false,heavy:false,ignoresCover:false,lance:false,rapid:null,melta:null,sustained:null,anti:[]
@@ -183,7 +198,10 @@ function rollOneWeapon(p,qty,settings){
   const woundMod=clamp(settings.woundMod+(ab.lance&&settings.charged?1:0),-1,1);
   const targetKey=settings.keyword;
   let antiThreshold=null;
-  for(const a of ab.anti)if(a.keyword===targetKey)antiThreshold=antiThreshold?Math.min(antiThreshold,a.threshold):a.threshold;
+  for(const a of ab.anti){
+    if(a.keyword===targetKey)antiThreshold=antiThreshold?Math.min(antiThreshold,a.threshold):a.threshold;
+  }
+  const effectiveWoundTarget=antiThreshold?Math.min(target,antiThreshold):target;
   const rrWounds=ab.twin?'failed':settings.rerollWounds;
 
   let normalWounds=lethalAuto,critWounds=0;
@@ -195,10 +213,15 @@ function rollOneWeapon(p,qty,settings){
     }
   }
 
+  const mortalDamageEvents=[];
   let mortalDamage=0;
   let saveable=normalWounds;
   if(dev){
-    for(let i=0;i<critWounds;i++)mortalDamage+=damageRoll(c.D||1,ab.melta&&settings.half?rollExpr(ab.melta):0);
+    for(let i=0;i<critWounds;i++){
+      const amount=damageRoll(c.D||1,ab.melta&&settings.half?rollExpr(ab.melta):0);
+      mortalDamageEvents.push(amount);
+      mortalDamage+=amount;
+    }
   }else{
     saveable+=critWounds;
   }
@@ -213,16 +236,20 @@ function rollOneWeapon(p,qty,settings){
     if(!(invSaved||armourSaved))failedSaves++;
   }
 
+  const normalDamageEvents=[];
   let normalDamage=0;
   for(let i=0;i<failedSaves;i++){
     const melta=ab.melta&&settings.half?rollExpr(ab.melta):0;
-    normalDamage+=damageRoll(c.D||1,melta);
+    const amount=damageRoll(c.D||1,melta);
+    normalDamageEvents.push(amount);
+    normalDamage+=amount;
   }
 
   return {
     name:p.name||'Weapon',qty,attacks,attackBreak,skill,hitMod,hitCount,critHits,extraHits,
-    lethalAuto,woundTarget:target,woundMod,normalWounds,critWounds,saveable,failedSaves,
-    mortalDamage,normalDamage,totalDamage:normalDamage+mortalDamage,abilities:ab
+    lethalAuto,woundTarget:target,effectiveWoundTarget,antiThreshold,antiKeyword:antiThreshold?targetKey:'',
+    woundMod,normalWounds,critWounds,saveable,failedSaves,
+    mortalDamage,mortalDamageEvents,normalDamage,normalDamageEvents,totalDamage:normalDamage+mortalDamage,abilities:ab
   };
 }
 function settings(){
@@ -241,17 +268,28 @@ function resultCard(r){
   const notes=[];
   if(r.extraHits)notes.push('+'+r.extraHits+' sustained hit'+(r.extraHits===1?'':'s'));
   if(r.lethalAuto)notes.push(r.lethalAuto+' lethal auto-wound'+(r.lethalAuto===1?'':'s'));
+  if(r.antiThreshold)notes.push('Anti-'+r.antiKeyword+' '+r.antiThreshold+'+ active');
   if(r.mortalDamage)notes.push(r.mortalDamage+' devastating mortal damage');
+
+  const normalLine=r.normalDamageEvents?.length
+    ? '<div class="damage-instance"><span>NORMAL DAMAGE</span><strong>'+esc(damageBreakdown(r.normalDamageEvents))+'</strong></div>'
+    : '';
+  const mortalLine=r.mortalDamageEvents?.length
+    ? '<div class="damage-instance mortal"><span>DEVASTATING DAMAGE</span><strong>'+esc(damageBreakdown(r.mortalDamageEvents))+'</strong></div>'
+    : '';
+
   return '<div class="roll-result-card">'+
     '<div class="roll-result-head"><strong>'+esc(r.name)+'</strong><span>'+r.qty+' equipped · '+r.attacks+' attacks</span></div>'+
     '<div class="roll-result-grid">'+
       '<div><span>HITS</span><b>'+r.hitCount+(r.extraHits?' + '+r.extraHits:'')+'</b></div>'+
       '<div><span>WOUNDS</span><b>'+(r.normalWounds+r.critWounds)+'</b></div>'+
       '<div><span>FAILED SAVES</span><b>'+r.failedSaves+'</b></div>'+
-      '<div><span>DAMAGE</span><b>'+r.totalDamage+'</b></div>'+
+      '<div><span>TOTAL DAMAGE</span><b>'+r.totalDamage+'</b></div>'+
     '</div>'+
+    (normalLine||mortalLine?'<div class="damage-breakdown">'+normalLine+mortalLine+'</div>':'')+
     '<div class="roll-result-meta">Hit '+r.skill+'+'+(r.hitMod?' ('+(r.hitMod>0?'+':'')+r.hitMod+' roll)':'')+
-      ' · Wound '+r.woundTarget+'+'+(r.woundMod?' ('+(r.woundMod>0?'+':'')+r.woundMod+')':'')+
+      ' · Wound '+r.effectiveWoundTarget+'+'+(r.antiThreshold&&r.antiThreshold<=r.woundTarget?' via Anti-'+esc(r.antiKeyword)+'':'')+
+      (r.woundMod?' ('+(r.woundMod>0?'+':'')+r.woundMod+')':'')+
       (notes.length?' · '+esc(notes.join(' · ')):'')+'</div>'+
   '</div>';
 }
