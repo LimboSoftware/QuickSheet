@@ -37,11 +37,12 @@ function renderUnit(u){
   if(u.options?.length)left+=section('LOADOUT OPTIONS','<ul class="options">'+u.options.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>');
   let right='';
   if(abilities.length)right+=section('ABILITIES',rulesHtml(abilities));
-  if(u.rules?.length)right+=section('CORE / UNIT RULES',rulesHtml(u.rules));
+  if(u.rules?.length)right+=collapsibleSection('CORE / UNIT RULES',rulesHtml(u.rules));
   const body='<div class="columns"><div>'+left+'</div><div>'+right+'</div></div>';
   els.card.innerHTML='<article class="datasheet"><header class="sheet-head"><div class="sheet-title">'+esc(u.name)+'</div><div class="sheet-subtitle">'+esc(u.army||'')+(u.points!=null?' • '+esc(u.points)+' pts':'')+'</div></header><div class="stats">'+stats.map(k=>'<div class="stat"><div class="stat-k">'+(k==='Sv'?'SV':k==='InSv'?'INV':k)+'</div><div class="stat-v">'+esc(stat(u,k))+'</div></div>').join('')+'</div><div class="sheet-body">'+body+'</div><footer class="sheet-foot">KEYWORDS: '+esc((u.keywords||[]).join(', '))+'</footer></article>'
 }
 function section(t,b){return '<section class="section"><div class="section-title">'+esc(t)+'</div><div class="section-body">'+b+'</div></section>'}
+function collapsibleSection(t,b){return '<details class="section collapsible-section"><summary class="section-title collapsible-title"><span>'+esc(t)+'</span><span class="collapse-chevron">▸</span></summary><div class="section-body">'+b+'</div></details>'}
 function armyName(){const t=current();if(!t)return'';if(t.kind==='army')return t.army;if(t.kind==='combined')return t.armies[0]||'';if(t.kind==='roster')return t.roster.army||'';return''}
 function factionDoc(){const a=norm(armyName().split(' - ').pop());const vals=Object.values(state.reference.factions||{});return vals.find(d=>[d.name,d.parent_name,d.source_alias].map(norm).includes(a))||vals.find(d=>a==='aeldari'&&['aeldari','asuryani','craftworlds'].includes(norm(d.name)))||null}
 function renderRef(kind){
