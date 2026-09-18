@@ -51,3 +51,9 @@ button,input{font:inherit}.topbar{flex:0 0 auto;padding:14px 16px 12px;backgroun
 .roll-result-meta{padding:8px 10px;border-top:1px solid #cdc9bd;color:#56656a;font-size:12px}.roll-empty{padding:18px;text-align:center;color:#9db0b5}
 @media(max-width:950px){.roll-toolbar{grid-template-columns:repeat(3,1fr)}.buff-grid{grid-template-columns:repeat(2,1fr)}.roll-weapon-row{grid-template-columns:30px 1fr 80px}.roll-statline{grid-column:2 / -1}.roll-card{width:96vw}}
 @media(max-width:620px){.sheet-head-row{align-items:center}.roll-unit-btn{font-size:15px;padding:10px 12px}.roll-toolbar{grid-template-columns:repeat(2,1fr)}.buff-grid{grid-template-columns:1fr}.roll-section-head{align-items:flex-start;flex-direction:column}.roll-result-grid{grid-template-columns:repeat(2,1fr)}}
+
+.damage-breakdown{display:flex;flex-direction:column;gap:6px;padding:9px 10px;border-top:1px solid #c9c5ba;background:#ebe7dd}
+.damage-instance{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 9px;background:#f7f4ec;border:1px solid #cbc6ba}
+.damage-instance span{font-size:10px;font-weight:950;letter-spacing:.08em;color:#607077}
+.damage-instance strong{font-size:18px;color:#172329}
+.damage-instance.mortal{border-color:#a88484;background:#f2e7e4}
