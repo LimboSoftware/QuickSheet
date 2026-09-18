@@ -12,6 +12,7 @@ const els={
 
 const SCORE_KEY='qs.scoreboard.v1';
 const QS_KEY='qs.web';
+const SCORE_WAKE_KEY='qs.scoreboard.wake';
 const MAX_CATEGORY=45;
 const MAX_ROUND_CATEGORY=15;
 
@@ -60,9 +61,9 @@ function save(){
     round:state.round,
     players:state.players
   }));
+  localStorage.setItem(SCORE_WAKE_KEY,els.wake.value||'score');
   try{
     const q=JSON.parse(localStorage.getItem(QS_KEY)||'{}');
-    q.wake=els.wake.value||'check';
     q.micOn=state.micOn;
     localStorage.setItem(QS_KEY,JSON.stringify(q));
   }catch{}
@@ -90,9 +91,9 @@ function load(){
   }catch{}
   try{
     const q=JSON.parse(localStorage.getItem(QS_KEY)||'{}');
-    els.wake.value=q.wake||'check';
     state.micOn=q.micOn!==false;
-  }catch{els.wake.value='check'}
+  }catch{}
+  els.wake.value=localStorage.getItem(SCORE_WAKE_KEY)||'score';
 }
 
 function playerHTML(p,i){
@@ -240,7 +241,7 @@ els.confirmReset.onclick=e=>{
   save();render();els.resetDialog.close();toast('Scoreboard reset');
 };
 els.wake.onchange=()=>{
-  els.wake.value=norm(els.wake.value)||'check';save();restartVoice();
+  els.wake.value=norm(els.wake.value)||'score';save();restartVoice();
 };
 els.mic.onclick=()=>{
   state.micOn=!state.micOn;save();
@@ -253,7 +254,7 @@ function updateMic(){
   els.mic.className='btn '+(state.micOn?'mic-on':'mic-off');
 }
 function updateVoice(){
-  const wake=norm(els.wake.value)||'check';
+  const wake=norm(els.wake.value)||'score';
   els.voice.innerHTML='<span class="voice-dot"></span>'+
     (state.micOn?(state.wakeArmed?'LISTENING…':'WAITING FOR “'+esc(wake.toUpperCase())+'”'):'MIC OFF');
 }
@@ -328,7 +329,7 @@ function restartVoice(){
   r.lang='en-GB';
   r.onresult=e=>{
     const text=norm(e.results[e.results.length-1][0].transcript);
-    const wake=norm(els.wake.value)||'check';
+    const wake=norm(els.wake.value)||'score';
     let cmd='';
     if(state.wakeArmed)cmd=text;
     else if(text===wake){state.wakeArmed=true;updateVoice();return}
