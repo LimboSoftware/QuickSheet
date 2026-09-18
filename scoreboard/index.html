@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1a22">
+  <title>40K QuickSheet Scoreboard</title>
+  <link rel="stylesheet" href="scoreboard.css?v=0.1">
+</head>
+<body>
+  <div id="scoreApp">
+    <header class="score-topbar">
+      <div class="score-brand">40K QUICKSHEET <span>SCOREBOARD</span></div>
+      <div class="top-actions">
+        <a class="btn subtle" href="../">QUICKSHEET</a>
+        <button id="undoBtn" class="btn subtle" type="button">UNDO</button>
+        <button id="resetBtn" class="btn danger" type="button">RESET</button>
+      </div>
+      <div class="voice-row">
+        <div id="roundLabel" class="round-pill">BATTLE ROUND 1 / 5</div>
+        <button id="prevRound" class="round-btn" type="button">‹</button>
+        <button id="nextRound" class="round-btn" type="button">›</button>
+        <div class="grow"></div>
+        <label for="wakeWord">Wake word:</label>
+        <input id="wakeWord" class="wake-input" value="check" autocomplete="off" spellcheck="false">
+        <button id="micToggle" class="btn mic-on" type="button">MIC ON</button>
+        <div id="voiceStatus" class="voice-status"><span class="voice-dot"></span>WAITING FOR “CHECK”</div>
+      </div>
+    </header>
+
+    <main>
+      <section class="rules-strip">
+        <strong>11th Edition matched play:</strong>
+        <span>Primary 45 max</span>
+        <span>Secondary 45 max</span>
+        <span>15 max per category each battle round</span>
+        <span>Battle Ready +10</span>
+        <span>100 VP max</span>
+      </section>
+
+      <section id="players" class="players"></section>
+
+      <section class="round-history">
+        <div class="history-head">
+          <h2>ROUND BREAKDOWN</h2>
+          <div class="hint">Tap a round to edit it</div>
+        </div>
+        <div id="roundGrid" class="round-grid"></div>
+      </section>
+
+      <section class="voice-help">
+        <h2>VOICE COMMANDS</h2>
+        <div class="commands">
+          <code>check player one primary five</code>
+          <code>check player two secondary four</code>
+          <code>check player one add five</code>
+          <code>check next round</code>
+          <code>check undo</code>
+          <code>check player two battle ready</code>
+        </div>
+        <p id="commandNote">If you say “add five” without Primary/Secondary, it adds to that player's last-selected score type.</p>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+
+    <dialog id="resetDialog">
+      <form method="dialog" class="dialog-card">
+        <h2>Reset scoreboard?</h2>
+        <p>This clears both players and all five battle rounds.</p>
+        <div class="dialog-actions">
+          <button value="cancel" class="btn subtle">CANCEL</button>
+          <button id="confirmReset" value="default" class="btn danger">RESET SCORES</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="scoreboard.js?v=0.1"></script>
+  </div>
+</body>
+</html>
