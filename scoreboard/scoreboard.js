@@ -4,7 +4,7 @@
 const $=s=>document.querySelector(s);
 const els={
   players:$('#players'), roundGrid:$('#roundGrid'), roundLabel:$('#roundLabel'),
-  wake:$('#wakeWord'), mic:$('#micToggle'), voice:$('#voiceStatus'),
+  wake:$('#wakeWord'), mic:$('#micToggle'), micSelect:$('#micSelect'), micCheck:$('#micCheck'), micLevel:$('#micLevel'), voice:$('#voiceStatus'),
   prev:$('#prevRound'), next:$('#nextRound'), undo:$('#undoBtn'),
   reset:$('#resetBtn'), resetDialog:$('#resetDialog'), confirmReset:$('#confirmReset'),
   toast:$('#toast')
@@ -13,6 +13,7 @@ const els={
 const SCORE_KEY='qs.scoreboard.v1';
 const QS_KEY='qs.web';
 const SCORE_WAKE_KEY='qs.scoreboard.wake';
+const MIC_DEVICE_KEY='qs.mic.device';
 const MAX_CATEGORY=45;
 const MAX_ROUND_CATEGORY=15;
 
@@ -29,6 +30,10 @@ const state={
   micOn:true,
   wakeArmed:false,
   recognition:null,
+  micDeviceId:'',
+  micStream:null,
+  micAudioContext:null,
+  micMeterFrame:null,
   pendingReset:false
 };
 
@@ -62,6 +67,7 @@ function save(){
     players:state.players
   }));
   localStorage.setItem(SCORE_WAKE_KEY,els.wake.value||'score');
+  if(state.micDeviceId)localStorage.setItem(MIC_DEVICE_KEY,state.micDeviceId);
   try{
     const q=JSON.parse(localStorage.getItem(QS_KEY)||'{}');
     q.micOn=state.micOn;
@@ -94,6 +100,7 @@ function load(){
     state.micOn=q.micOn!==false;
   }catch{}
   els.wake.value=localStorage.getItem(SCORE_WAKE_KEY)||'score';
+  state.micDeviceId=localStorage.getItem(MIC_DEVICE_KEY)||'';
 }
 
 function playerHTML(p,i){
@@ -245,9 +252,11 @@ els.wake.onchange=()=>{
 };
 els.mic.onclick=()=>{
   state.micOn=!state.micOn;save();
-  if(state.micOn)restartVoice();else stopVoice();
+  if(state.micOn){ensureSelectedMic(false).then(ok=>{if(!ok)restartVoice()})}else{stopVoice();stopMicStream()}
   updateMic();updateVoice();
 };
+els.micCheck.onclick=()=>ensureSelectedMic(true);
+els.micSelect.onchange=()=>{state.micDeviceId=els.micSelect.value;save();ensureSelectedMic(true)};
 
 function updateMic(){
   els.mic.textContent=state.micOn?'MIC ON':'MIC OFF';
@@ -315,6 +324,97 @@ function processCommand(raw){
   adjust(pi,type,negative?-n:n);
 }
 
+
+async function refreshMicDevices(requestPermission=false){
+  if(!navigator.mediaDevices?.enumerateDevices){
+    els.micSelect.disabled=true;els.micCheck.disabled=true;return;
+  }
+  try{
+    if(requestPermission){
+      const temp=await navigator.mediaDevices.getUserMedia({audio:true});
+      temp.getTracks().forEach(t=>t.stop());
+    }
+    const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+    const wanted=state.micDeviceId||localStorage.getItem(MIC_DEVICE_KEY)||'';
+    els.micSelect.innerHTML='';
+    const def=document.createElement('option');def.value='';def.textContent='DEFAULT MICROPHONE';els.micSelect.appendChild(def);
+    devices.forEach((d,i)=>{
+      const o=document.createElement('option');
+      o.value=d.deviceId;
+      o.textContent=d.label||('MICROPHONE '+(i+1));
+      els.micSelect.appendChild(o);
+    });
+    if(wanted&&devices.some(d=>d.deviceId===wanted)){els.micSelect.value=wanted;state.micDeviceId=wanted}
+    else{els.micSelect.value='';state.micDeviceId=''}
+  }catch{
+    els.micSelect.innerHTML='<option value="">MIC PERMISSION NEEDED</option>';
+  }
+}
+function stopMicMeter(){
+  if(state.micMeterFrame)cancelAnimationFrame(state.micMeterFrame);
+  state.micMeterFrame=null;
+  if(state.micAudioContext){try{state.micAudioContext.close()}catch{}}
+  state.micAudioContext=null;
+  if(els.micLevel)els.micLevel.style.width='0%';
+}
+function stopMicStream(){
+  stopMicMeter();
+  if(state.micStream){state.micStream.getTracks().forEach(t=>t.stop());state.micStream=null}
+}
+function startMicMeter(stream){
+  stopMicMeter();
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return;
+  try{
+    const ctx=new AC(),source=ctx.createMediaStreamSource(stream),analyser=ctx.createAnalyser();
+    analyser.fftSize=256;source.connect(analyser);state.micAudioContext=ctx;
+    const data=new Uint8Array(analyser.fftSize);
+    const draw=()=>{
+      if(!state.micStream)return;
+      analyser.getByteTimeDomainData(data);
+      let sum=0;for(const v of data){const x=(v-128)/128;sum+=x*x}
+      const rms=Math.sqrt(sum/data.length);
+      els.micLevel.style.width=Math.min(100,Math.max(2,rms*320))+'%';
+      state.micMeterFrame=requestAnimationFrame(draw);
+    };
+    draw();
+  }catch{}
+}
+async function ensureSelectedMic(showToast=false){
+  if(!navigator.mediaDevices?.getUserMedia){
+    if(showToast)toast('Microphone selection is not supported in this browser');
+    return false;
+  }
+  try{
+    stopMicStream();
+    const audio=state.micDeviceId?{deviceId:{exact:state.micDeviceId}}:true;
+    const stream=await navigator.mediaDevices.getUserMedia({audio});
+    state.micStream=stream;
+    const track=stream.getAudioTracks()[0];
+    try{track.contentHint='speech-recognition'}catch{}
+    const actual=track?.getSettings?.().deviceId||state.micDeviceId||'';
+    if(actual){state.micDeviceId=actual;localStorage.setItem(MIC_DEVICE_KEY,actual)}
+    startMicMeter(stream);
+    await refreshMicDevices(false);
+    if(state.micDeviceId)els.micSelect.value=state.micDeviceId;
+    if(showToast)toast('Mic ready: '+(track?.label||'selected microphone'));
+    if(state.micOn)restartVoice();
+    return true;
+  }catch(e){
+    if(showToast)toast(e?.name==='NotAllowedError'?'Microphone permission was blocked':'Could not open that microphone');
+    return false;
+  }
+}
+function startRecognition(r){
+  const track=state.micStream?.getAudioTracks?.()[0];
+  try{
+    if(track&&track.readyState==='live')r.start(track);
+    else r.start();
+  }catch{
+    try{r.start()}catch{}
+  }
+}
+
 const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
 function stopVoice(){
   if(state.recognition){try{state.recognition.onend=null;state.recognition.abort()}catch{}state.recognition=null}
@@ -341,10 +441,12 @@ function restartVoice(){
   };
   r.onend=()=>{if(state.micOn)setTimeout(restartVoice,400)};
   r.onerror=()=>{};
-  try{r.start()}catch{}
+  startRecognition(r)
 }
 function setupVoice(){
   updateMic();
+  refreshMicDevices(false);
+  if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>refreshMicDevices(false));
   if(!Speech){
     state.micOn=false;
     updateMic();
