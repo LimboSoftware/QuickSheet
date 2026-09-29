@@ -3,7 +3,7 @@
 const GROUPS=['EPIC CHARACTERS','CHARACTERS','INFANTRY','MOUNTED','VEHICLES','MONSTERS','AIRCRAFT','BEASTS','SWARMS','FORTIFICATIONS','OTHER'];
 const $=s=>document.querySelector(s);
 const els={tabs:$('#tabs'),browser:$('#browser'),card:$('#cardPane'),search:$('#searchInput'),wake:$('#wakeWord'),status:$('#voiceStatus'),mic:$('#micToggle'),micSelect:$('#micSelect'),micCheck:$('#micCheck'),micLevel:$('#micLevel'),file:$('#fileInput'),dialog:$('#armyDialog'),checklist:$('#armyChecklist'),toast:$('#toast')};
-const state={units:[],reference:{factions:{}},selectedArmies:[],tabs:[],activeTab:null,rosters:[],micOn:true,wakeArmed:false,recognition:null,micDeviceId:'',micStream:null,micAudioContext:null,micMeterFrame:null};
+const state={units:[],reference:{factions:{}},selectedArmies:[],tabs:[],activeTab:null,rosters:[],micOn:true,wakeArmed:false,recognition:null,recognitionRunning:false,voiceRestartTimer:null,voiceStartTimer:null,lastVoiceText:'',lastVoiceAt:0,micDeviceId:'',micStream:null,micAudioContext:null,micMeterFrame:null};
 const MIC_DEVICE_KEY='qs.mic.device';
 const norm=s=>String(s??'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/&/g,' and ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
@@ -266,8 +266,154 @@ function startRecognition(r){
 }
 
 const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
-function stopVoice(){if(state.recognition){try{state.recognition.onend=null;state.recognition.abort()}catch{}state.recognition=null}}
-function restartVoice(){stopVoice();if(!state.micOn||!Speech)return;const r=new Speech();state.recognition=r;r.continuous=true;r.interimResults=false;r.lang='en-GB';r.onresult=e=>{const text=norm(e.results[e.results.length-1][0].transcript),wake=norm(els.wake.value)||'check';let cmd='';if(state.wakeArmed)cmd=text;else if(text===wake){state.wakeArmed=true;updateVoice();return}else if(text.startsWith(wake+' '))cmd=text.slice(wake.length).trim();else return;if(cmd==='switch'){state.wakeArmed=false;cycle();updateVoice();return}if(['scoreboard','score board','scores','score'].includes(cmd)){location.href='./scoreboard/';return}if(['roll','roll dice','roll attacks'].includes(cmd)){const b=document.querySelector('#rollUnitBtn');if(b)b.click();else toast('Open a unit from an imported list first');state.wakeArmed=false;updateVoice();return}if(['strats','stratagems','strategems','core strats'].includes(cmd)){renderRef('strats');state.wakeArmed=false;updateVoice();return}const m=matches(cmd,unitsFor())[0];if(m){els.search.value=cmd;renderBrowser();renderUnit(m.u);state.wakeArmed=false;updateVoice()}};r.onend=()=>{if(state.micOn)setTimeout(restartVoice,400)};r.onerror=e=>{if(e?.error==='not-allowed'||e?.error==='service-not-allowed')state.micOn=false;updateMic();if(e?.error&&e.error!=='aborted'&&e.error!=='no-speech')els.status.textContent='VOICE ERROR: '+String(e.error).toUpperCase();};startRecognition(r)}
+
+function stopVoice(){
+  if(state.voiceRestartTimer)clearTimeout(state.voiceRestartTimer);
+  if(state.voiceStartTimer)clearTimeout(state.voiceStartTimer);
+  state.voiceRestartTimer=null;state.voiceStartTimer=null;
+  const r=state.recognition;
+  state.recognition=null;state.recognitionRunning=false;
+  if(r){
+    r.onend=null;
+    try{r.abort()}catch{}
+  }
+}
+
+function voiceBestText(event){
+  let best=null;
+  for(let i=event.resultIndex;i<event.results.length;i++){
+    const result=event.results[i];
+    for(let j=0;j<result.length;j++){
+      const alt=result[j];
+      const conf=Number.isFinite(alt.confidence)?alt.confidence:0;
+      if(!best||conf>best.confidence)best={text:alt.transcript||'',confidence:conf,isFinal:result.isFinal};
+    }
+  }
+  return best;
+}
+
+function runVoiceCommand(cmd){
+  if(cmd==='switch'){cycle();return true}
+  if(['scoreboard','score board','scores','score'].includes(cmd)){location.href='./scoreboard/';return true}
+  if(['roll','roll dice','roll attacks'].includes(cmd)){
+    const b=document.querySelector('#rollUnitBtn');
+    if(b)b.click();else toast('Open a unit from an imported list first');
+    return true;
+  }
+  if(['strats','stratagems','strategems','core strats'].includes(cmd)){renderRef('strats');return true}
+  if(['army rules','rules'].includes(cmd)){renderRef('army');return true}
+  if(['detachments','detachment'].includes(cmd)){renderRef('detach');return true}
+  const m=matches(cmd,unitsFor())[0];
+  if(m){
+    els.search.value=cmd;renderBrowser();renderUnit(m.u);return true;
+  }
+  return false;
+}
+
+function handleVoiceText(raw,isFinal){
+  const text=norm(raw);
+  if(!text)return;
+  const wake=norm(els.wake.value)||'check';
+
+  if(!isFinal){
+    els.status.innerHTML='<span class="voice-dot"></span>HEARING: '+esc(text.toUpperCase());
+    return;
+  }
+
+  // Chrome may deliver the same final phrase more than once around an automatic restart.
+  const now=Date.now();
+  if(text===state.lastVoiceText&&now-state.lastVoiceAt<1200)return;
+  state.lastVoiceText=text;state.lastVoiceAt=now;
+
+  let cmd='';
+  if(state.wakeArmed){
+    cmd=text;
+  }else if(text===wake){
+    state.wakeArmed=true;
+    els.status.innerHTML='<span class="voice-dot"></span>WAKE HEARD — SAY COMMAND';
+    return;
+  }else if(text.startsWith(wake+' ')){
+    cmd=text.slice(wake.length).trim();
+  }else{
+    updateVoice();return;
+  }
+
+  state.wakeArmed=false;
+  if(!runVoiceCommand(cmd))toast('Heard “‘'+cmd+'” but no command matched');
+  updateVoice();
+}
+
+function startRecognition(r){
+  const track=state.micStream?.getAudioTracks?.()[0];
+  if(!track||track.readyState!=='live'){
+    els.status.textContent='VOICE ERROR: NO ACTIVE MICROPHONE';
+    return;
+  }
+  try{
+    r.start(track);
+    if(state.voiceStartTimer)clearTimeout(state.voiceStartTimer);
+    state.voiceStartTimer=setTimeout(()=>{
+      if(state.micOn&&!state.recognitionRunning){
+        els.status.textContent='VOICE ERROR: RECOGNITION DID NOT START';
+      }
+    },3000);
+  }catch(e){
+    els.status.textContent='VOICE ERROR: '+String(e?.name||'START FAILED').toUpperCase();
+  }
+}
+
+function restartVoice(){
+  stopVoice();
+  if(!state.micOn||!Speech)return;
+  const track=state.micStream?.getAudioTracks?.()[0];
+  if(!track||track.readyState!=='live'){
+    els.status.textContent='MIC NOT READY — CLICK MIC CHECK';
+    return;
+  }
+
+  const r=new Speech();
+  state.recognition=r;
+  r.continuous=true;
+  r.interimResults=true;
+  r.maxAlternatives=3;
+  r.lang='en-GB';
+
+  // Chrome's selected-track path is most reliable through its cloud recognizer.
+  try{if('mode' in r)r.mode='cloud-only'}catch{}
+  try{if('processLocally' in r)r.processLocally=false}catch{}
+
+  r.onstart=()=>{
+    state.recognitionRunning=true;
+    if(state.voiceStartTimer)clearTimeout(state.voiceStartTimer);
+    state.voiceStartTimer=null;
+    els.status.innerHTML='<span class="voice-dot"></span>LISTENING FOR “'+esc((norm(els.wake.value)||'check').toUpperCase())+'”';
+  };
+  r.onaudiostart=()=>{els.status.innerHTML='<span class="voice-dot"></span>MIC ACTIVE — SAY “'+esc((norm(els.wake.value)||'check').toUpperCase())+'”'};
+  r.onspeechstart=()=>{els.status.innerHTML='<span class="voice-dot"></span>HEARING SPEECH…'};
+  r.onresult=e=>{
+    const best=voiceBestText(e);
+    if(best)handleVoiceText(best.text,best.isFinal);
+  };
+  r.onnomatch=()=>{els.status.textContent='HEARD SPEECH — NO MATCH'};
+  r.onerror=e=>{
+    state.recognitionRunning=false;
+    const code=e?.error||'unknown';
+    if(code==='not-allowed'||code==='service-not-allowed'){
+      state.micOn=false;updateMic();
+    }
+    if(code!=='aborted'&&code!=='no-speech')els.status.textContent='VOICE ERROR: '+String(code).toUpperCase();
+  };
+  r.onend=()=>{
+    state.recognitionRunning=false;
+    if(state.micOn){
+      state.voiceRestartTimer=setTimeout(()=>{
+        if(state.micOn)restartVoice();
+      },250);
+    }
+  };
+  startRecognition(r);
+}
+
 async function setupVoice(){
   updateMic();
   await refreshMicDevices(false);
