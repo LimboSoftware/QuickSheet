@@ -57,3 +57,11 @@ button,input{font:inherit}.topbar{flex:0 0 auto;padding:14px 16px 12px;backgroun
 .damage-instance span{font-size:10px;font-weight:950;letter-spacing:.08em;color:#607077}
 .damage-instance strong{font-size:18px;color:#172329}
 .damage-instance.mortal{border-color:#a88484;background:#f2e7e4}
+
+.mic-picker{display:flex;align-items:center;gap:7px;min-width:0}
+.mic-select{max-width:230px;min-width:150px;height:42px;background:#081319;border:1px solid #5d747d;color:#eef5f6;border-radius:3px;padding:0 9px;font-weight:800}
+.mic-check{white-space:nowrap}
+.mic-meter{width:72px;height:10px;background:#071117;border:1px solid #405961;border-radius:999px;overflow:hidden;flex:0 0 auto}
+.mic-meter span{display:block;width:0;height:100%;background:#8fe0d2;transition:width .06s linear}
+@media(max-width:1050px){.mic-picker{width:100%;order:3}.mic-select{flex:1;max-width:none}.mic-meter{width:90px}}
+@media(max-width:620px){.mic-picker{flex-wrap:wrap}.mic-select{min-width:180px}.mic-meter{flex:1;min-width:80px}}
