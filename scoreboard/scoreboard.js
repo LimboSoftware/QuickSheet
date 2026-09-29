@@ -406,13 +406,9 @@ async function ensureSelectedMic(showToast=false){
   }
 }
 function startRecognition(r){
-  const track=state.micStream?.getAudioTracks?.()[0];
-  try{
-    if(track&&track.readyState==='live')r.start(track);
-    else r.start();
-  }catch{
-    try{r.start()}catch{}
-  }
+  // Keep mic selection/check separate from Web Speech recognition. The
+  // MediaStreamTrack form of start() is not dependable across browsers.
+  try{r.start()}catch{}
 }
 
 const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -440,7 +436,7 @@ function restartVoice(){
     updateVoice();
   };
   r.onend=()=>{if(state.micOn)setTimeout(restartVoice,400)};
-  r.onerror=()=>{};
+  r.onerror=e=>{if(e?.error==='not-allowed'||e?.error==='service-not-allowed')state.micOn=false;updateMic();if(e?.error&&e.error!=='aborted'&&e.error!=='no-speech')els.voice.textContent='VOICE ERROR: '+String(e.error).toUpperCase();};
   startRecognition(r)
 }
 function setupVoice(){
