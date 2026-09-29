@@ -2,8 +2,9 @@
 'use strict';
 const GROUPS=['EPIC CHARACTERS','CHARACTERS','INFANTRY','MOUNTED','VEHICLES','MONSTERS','AIRCRAFT','BEASTS','SWARMS','FORTIFICATIONS','OTHER'];
 const $=s=>document.querySelector(s);
-const els={tabs:$('#tabs'),browser:$('#browser'),card:$('#cardPane'),search:$('#searchInput'),wake:$('#wakeWord'),status:$('#voiceStatus'),mic:$('#micToggle'),file:$('#fileInput'),dialog:$('#armyDialog'),checklist:$('#armyChecklist'),toast:$('#toast')};
-const state={units:[],reference:{factions:{}},selectedArmies:[],tabs:[],activeTab:null,rosters:[],micOn:true,wakeArmed:false,recognition:null};
+const els={tabs:$('#tabs'),browser:$('#browser'),card:$('#cardPane'),search:$('#searchInput'),wake:$('#wakeWord'),status:$('#voiceStatus'),mic:$('#micToggle'),micSelect:$('#micSelect'),micCheck:$('#micCheck'),micLevel:$('#micLevel'),file:$('#fileInput'),dialog:$('#armyDialog'),checklist:$('#armyChecklist'),toast:$('#toast')};
+const state={units:[],reference:{factions:{}},selectedArmies:[],tabs:[],activeTab:null,rosters:[],micOn:true,wakeArmed:false,recognition:null,micDeviceId:'',micStream:null,micAudioContext:null,micMeterFrame:null};
+const MIC_DEVICE_KEY='qs.mic.device';
 const norm=s=>String(s??'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/&/g,' and ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 const toast=m=>{els.toast.textContent=m;els.toast.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>els.toast.classList.remove('show'),1800)};
@@ -11,8 +12,8 @@ const aliases={windriders:['wind riders','win riders','wind writers'],rangers:['
 function score(q,name){q=norm(q);name=norm(name);if(!q||!name)return 0;if(q===name)return 100;if(name.includes(q)||q.includes(name))return 92;for(const a of aliases[name]||[])if(norm(a)===q)return 99;let same=0;for(let i=0;i<Math.min(q.length,name.length);i++){if(q[i]!==name[i])break;same++}return same>=4?70+Math.min(20,same):0}
 function matches(q,units){return units.map(u=>({u,s:score(q,u.name)})).filter(x=>x.s>35).sort((a,b)=>b.s-a.s).slice(0,20)}
 function group(u){const k=new Set((u.keywords||[]).map(norm));if(k.has('epic hero'))return'EPIC CHARACTERS';if(k.has('character'))return'CHARACTERS';if(k.has('infantry'))return'INFANTRY';if(k.has('mounted'))return'MOUNTED';if(k.has('vehicle'))return'VEHICLES';if(k.has('monster'))return'MONSTERS';if(k.has('aircraft'))return'AIRCRAFT';if(k.has('beast'))return'BEASTS';if(k.has('swarm'))return'SWARMS';if(k.has('fortification'))return'FORTIFICATIONS';return'OTHER'}
-function save(){localStorage.setItem('qs.web',JSON.stringify({selectedArmies:state.selectedArmies,wake:els.wake.value,micOn:state.micOn,rosters:state.rosters,activeTab:state.activeTab}))}
-function loadSaved(){try{const p=JSON.parse(localStorage.getItem('qs.web')||'{}');state.selectedArmies=p.selectedArmies||[];state.rosters=p.rosters||[];state.micOn=p.micOn!==false;state.activeTab=p.activeTab||null;els.wake.value=p.wake||'check'}catch{}}
+function save(){localStorage.setItem('qs.web',JSON.stringify({selectedArmies:state.selectedArmies,wake:els.wake.value,micOn:state.micOn,rosters:state.rosters,activeTab:state.activeTab}));if(state.micDeviceId)localStorage.setItem(MIC_DEVICE_KEY,state.micDeviceId)}
+function loadSaved(){try{const p=JSON.parse(localStorage.getItem('qs.web')||'{}');state.selectedArmies=p.selectedArmies||[];state.rosters=p.rosters||[];state.micOn=p.micOn!==false;state.activeTab=p.activeTab||null;els.wake.value=p.wake||'check'}catch{}state.micDeviceId=localStorage.getItem(MIC_DEVICE_KEY)||''}
 async function load(){const [u,r]=await Promise.all([fetch('data/units.json',{cache:'no-store'}).then(x=>x.json()),fetch('data/reference.json',{cache:'no-store'}).then(x=>x.json())]);state.units=Array.isArray(u)?u:(u.units||[]);state.reference=r||{factions:{}};const armies=[...new Set(state.units.map(x=>x.army).filter(Boolean))].sort();if(!state.selectedArmies.length)state.selectedArmies=armies.slice(0,1);state.selectedArmies=state.selectedArmies.filter(a=>armies.includes(a));buildTabs();renderAll();populateArmyDialog();setupVoice()}
 function buildTabs(){const t=[];if(state.selectedArmies.length<=3)state.selectedArmies.forEach(a=>t.push({id:'army:'+a,label:a.replace(/^(Imperium|Chaos|Xenos) - /,''),kind:'army',army:a}));else if(state.selectedArmies.length)t.push({id:'combined',label:state.selectedArmies.length+' ARMIES',kind:'combined',armies:[...state.selectedArmies]});for(const r of state.rosters)t.push({id:'roster:'+r.id,label:r.label,kind:'roster',roster:r});state.tabs=t;if(!t.some(x=>x.id===state.activeTab))state.activeTab=t[0]?.id||null}
 function current(){return state.tabs.find(x=>x.id===state.activeTab)}
@@ -143,13 +144,107 @@ function rosterUnits(doc){
 }
 function rosterDetachments(doc){const out=[];function walk(n){if(!n||typeof n!=='object')return;if(String(n.group||'').toLowerCase()==='detachment'&&n.name&&!out.includes(n.name))out.push(n.name);for(const c of n.selections||[])walk(c)}for(const f of doc?.roster?.forces||[])for(const s of f.selections||[])walk(s);return out}
 els.file.onchange=async()=>{const f=els.file.files?.[0];if(!f)return;try{const d=JSON.parse(await f.text()),units=rosterUnits(d);if(!units.length)throw Error('No units found');const id='r'+Date.now(),label=d.roster?.name||f.name.replace(/\.json$/i,'');state.rosters.push({id,label,army:units[0].army,units,detachments:rosterDetachments(d)});state.activeTab='roster:'+id;save();renderAll();toast('Imported '+label)}catch(e){alert('Could not import list: '+e.message)}finally{els.file.value=''}};
-$('#importBtn').onclick=()=>els.file.click();$('#scoreboardBtn').onclick=()=>{location.href='./scoreboard/'};$('#updateBtn').onclick=()=>{if('serviceWorker'in navigator)navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.update()))).finally(()=>location.reload());else location.reload()};$('#armiesBtn').onclick=()=>{populateArmyDialog();els.dialog.showModal()};$('#applyArmies').onclick=e=>{e.preventDefault();state.selectedArmies=[...els.checklist.querySelectorAll('input:checked')].map(x=>x.value);buildTabs();state.activeTab=state.tabs[0]?.id||null;save();els.dialog.close();renderAll()};els.search.oninput=renderBrowser;$('#clearSearch').onclick=()=>{els.search.value='';renderBrowser()};els.wake.onchange=()=>{els.wake.value=norm(els.wake.value)||'check';save();restartVoice()};els.mic.onclick=()=>{state.micOn=!state.micOn;save();state.micOn?restartVoice():stopVoice();updateMic();updateVoice()};
+$('#importBtn').onclick=()=>els.file.click();$('#scoreboardBtn').onclick=()=>{location.href='./scoreboard/'};$('#updateBtn').onclick=()=>{if('serviceWorker'in navigator)navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.update()))).finally(()=>location.reload());else location.reload()};$('#armiesBtn').onclick=()=>{populateArmyDialog();els.dialog.showModal()};$('#applyArmies').onclick=e=>{e.preventDefault();state.selectedArmies=[...els.checklist.querySelectorAll('input:checked')].map(x=>x.value);buildTabs();state.activeTab=state.tabs[0]?.id||null;save();els.dialog.close();renderAll()};els.search.oninput=renderBrowser;$('#clearSearch').onclick=()=>{els.search.value='';renderBrowser()};els.wake.onchange=()=>{els.wake.value=norm(els.wake.value)||'check';save();restartVoice()};els.mic.onclick=()=>{state.micOn=!state.micOn;save();if(state.micOn){ensureSelectedMic(false).finally(restartVoice)}else{stopVoice();stopMicStream()}updateMic();updateVoice()};
+els.micCheck.onclick=()=>ensureSelectedMic(true);
+els.micSelect.onchange=()=>{state.micDeviceId=els.micSelect.value;save();ensureSelectedMic(true)};
 function updateMic(){els.mic.textContent=state.micOn?'MIC ON':'MIC OFF';els.mic.className='btn '+(state.micOn?'mic-on':'mic-off')}
 function updateVoice(){const w=norm(els.wake.value)||'check';els.status.innerHTML='<span class="voice-dot"></span>'+(state.micOn?(state.wakeArmed?'LISTENING…':'WAITING FOR “'+esc(w.toUpperCase())+'”'):'MIC OFF')}
 function cycle(){if(!state.tabs.length)return;let i=state.tabs.findIndex(x=>x.id===state.activeTab);state.activeTab=state.tabs[(i+1)%state.tabs.length].id;els.search.value='';save();renderAll();toast('Switched list')}
+
+async function refreshMicDevices(requestPermission=false){
+  if(!navigator.mediaDevices?.enumerateDevices){
+    els.micSelect.disabled=true;els.micCheck.disabled=true;return;
+  }
+  try{
+    if(requestPermission){
+      const temp=await navigator.mediaDevices.getUserMedia({audio:true});
+      temp.getTracks().forEach(t=>t.stop());
+    }
+    const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+    const wanted=state.micDeviceId||localStorage.getItem(MIC_DEVICE_KEY)||'';
+    els.micSelect.innerHTML='';
+    const def=document.createElement('option');def.value='';def.textContent='DEFAULT MICROPHONE';els.micSelect.appendChild(def);
+    devices.forEach((d,i)=>{
+      const o=document.createElement('option');
+      o.value=d.deviceId;
+      o.textContent=d.label||('MICROPHONE '+(i+1));
+      els.micSelect.appendChild(o);
+    });
+    if(wanted&&devices.some(d=>d.deviceId===wanted)){els.micSelect.value=wanted;state.micDeviceId=wanted}
+    else{els.micSelect.value='';state.micDeviceId=''}
+  }catch(e){
+    els.micSelect.innerHTML='<option value="">MIC PERMISSION NEEDED</option>';
+  }
+}
+function stopMicMeter(){
+  if(state.micMeterFrame)cancelAnimationFrame(state.micMeterFrame);
+  state.micMeterFrame=null;
+  if(state.micAudioContext){try{state.micAudioContext.close()}catch{}}
+  state.micAudioContext=null;
+  if(els.micLevel)els.micLevel.style.width='0%';
+}
+function stopMicStream(){
+  stopMicMeter();
+  if(state.micStream){state.micStream.getTracks().forEach(t=>t.stop());state.micStream=null}
+}
+function startMicMeter(stream){
+  stopMicMeter();
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return;
+  try{
+    const ctx=new AC(),source=ctx.createMediaStreamSource(stream),analyser=ctx.createAnalyser();
+    analyser.fftSize=256;source.connect(analyser);state.micAudioContext=ctx;
+    const data=new Uint8Array(analyser.fftSize);
+    const draw=()=>{
+      if(!state.micStream)return;
+      analyser.getByteTimeDomainData(data);
+      let sum=0;for(const v of data){const x=(v-128)/128;sum+=x*x}
+      const rms=Math.sqrt(sum/data.length);
+      const pct=Math.min(100,Math.max(2,rms*320));
+      els.micLevel.style.width=pct+'%';
+      state.micMeterFrame=requestAnimationFrame(draw);
+    };
+    draw();
+  }catch{}
+}
+async function ensureSelectedMic(showToast=false){
+  if(!navigator.mediaDevices?.getUserMedia){
+    if(showToast)toast('Microphone selection is not supported in this browser');
+    return false;
+  }
+  try{
+    stopMicStream();
+    const audio=state.micDeviceId?{deviceId:{exact:state.micDeviceId}}:true;
+    const stream=await navigator.mediaDevices.getUserMedia({audio});
+    state.micStream=stream;
+    const track=stream.getAudioTracks()[0];
+    try{track.contentHint='speech-recognition'}catch{}
+    const actual=track?.getSettings?.().deviceId||state.micDeviceId||'';
+    if(actual){state.micDeviceId=actual;localStorage.setItem(MIC_DEVICE_KEY,actual)}
+    startMicMeter(stream);
+    await refreshMicDevices(false);
+    if(state.micDeviceId)els.micSelect.value=state.micDeviceId;
+    if(showToast)toast('Mic ready: '+(track?.label||'selected microphone'));
+    if(state.micOn)restartVoice();
+    return true;
+  }catch(e){
+    if(showToast)toast(e?.name==='NotAllowedError'?'Microphone permission was blocked':'Could not open that microphone');
+    return false;
+  }
+}
+function startRecognition(r){
+  const track=state.micStream?.getAudioTracks?.()[0];
+  try{
+    if(track&&track.readyState==='live')r.start(track);
+    else r.start();
+  }catch(e){
+    try{r.start()}catch{}
+  }
+}
+
 const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
 function stopVoice(){if(state.recognition){try{state.recognition.onend=null;state.recognition.abort()}catch{}state.recognition=null}}
-function restartVoice(){stopVoice();if(!state.micOn||!Speech)return;const r=new Speech();state.recognition=r;r.continuous=true;r.interimResults=false;r.lang='en-GB';r.onresult=e=>{const text=norm(e.results[e.results.length-1][0].transcript),wake=norm(els.wake.value)||'check';let cmd='';if(state.wakeArmed)cmd=text;else if(text===wake){state.wakeArmed=true;updateVoice();return}else if(text.startsWith(wake+' '))cmd=text.slice(wake.length).trim();else return;if(cmd==='switch'){state.wakeArmed=false;cycle();updateVoice();return}if(['scoreboard','score board','scores','score'].includes(cmd)){location.href='./scoreboard/';return}if(['roll','roll dice','roll attacks'].includes(cmd)){const b=document.querySelector('#rollUnitBtn');if(b)b.click();else toast('Open a unit from an imported list first');state.wakeArmed=false;updateVoice();return}if(['strats','stratagems','strategems','core strats'].includes(cmd)){renderRef('strats');state.wakeArmed=false;updateVoice();return}const m=matches(cmd,unitsFor())[0];if(m){els.search.value=cmd;renderBrowser();renderUnit(m.u);state.wakeArmed=false;updateVoice()}};r.onend=()=>{if(state.micOn)setTimeout(restartVoice,400)};r.onerror=()=>{};try{r.start()}catch{}}
-function setupVoice(){updateMic();if(!Speech){state.micOn=false;updateMic();els.status.textContent='VOICE NOT SUPPORTED';return}restartVoice();updateVoice()}
-loadSaved();load().catch(e=>{console.error(e);els.card.innerHTML='<div class="empty-card"><div class="empty-title">Could not load data</div><div>'+esc(e.message)+'</div></div>'});if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./service-worker.js?v=0.6').catch(()=>{});
+function restartVoice(){stopVoice();if(!state.micOn||!Speech)return;const r=new Speech();state.recognition=r;r.continuous=true;r.interimResults=false;r.lang='en-GB';r.onresult=e=>{const text=norm(e.results[e.results.length-1][0].transcript),wake=norm(els.wake.value)||'check';let cmd='';if(state.wakeArmed)cmd=text;else if(text===wake){state.wakeArmed=true;updateVoice();return}else if(text.startsWith(wake+' '))cmd=text.slice(wake.length).trim();else return;if(cmd==='switch'){state.wakeArmed=false;cycle();updateVoice();return}if(['scoreboard','score board','scores','score'].includes(cmd)){location.href='./scoreboard/';return}if(['roll','roll dice','roll attacks'].includes(cmd)){const b=document.querySelector('#rollUnitBtn');if(b)b.click();else toast('Open a unit from an imported list first');state.wakeArmed=false;updateVoice();return}if(['strats','stratagems','strategems','core strats'].includes(cmd)){renderRef('strats');state.wakeArmed=false;updateVoice();return}const m=matches(cmd,unitsFor())[0];if(m){els.search.value=cmd;renderBrowser();renderUnit(m.u);state.wakeArmed=false;updateVoice()}};r.onend=()=>{if(state.micOn)setTimeout(restartVoice,400)};r.onerror=()=>{};startRecognition(r)}
+function setupVoice(){updateMic();refreshMicDevices(false);if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>refreshMicDevices(false));if(!Speech){state.micOn=false;updateMic();els.status.textContent='VOICE NOT SUPPORTED';return}restartVoice();updateVoice()}
+loadSaved();load().catch(e=>{console.error(e);els.card.innerHTML='<div class="empty-card"><div class="empty-title">Could not load data</div><div>'+esc(e.message)+'</div></div>'});if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./service-worker.js?v=0.8').catch(()=>{});
 })();
