@@ -144,9 +144,27 @@ function rosterUnits(doc){
 }
 function rosterDetachments(doc){const out=[];function walk(n){if(!n||typeof n!=='object')return;if(String(n.group||'').toLowerCase()==='detachment'&&n.name&&!out.includes(n.name))out.push(n.name);for(const c of n.selections||[])walk(c)}for(const f of doc?.roster?.forces||[])for(const s of f.selections||[])walk(s);return out}
 els.file.onchange=async()=>{const f=els.file.files?.[0];if(!f)return;try{const d=JSON.parse(await f.text()),units=rosterUnits(d);if(!units.length)throw Error('No units found');const id='r'+Date.now(),label=d.roster?.name||f.name.replace(/\.json$/i,'');state.rosters.push({id,label,army:units[0].army,units,detachments:rosterDetachments(d)});state.activeTab='roster:'+id;save();renderAll();toast('Imported '+label)}catch(e){alert('Could not import list: '+e.message)}finally{els.file.value=''}};
-$('#importBtn').onclick=()=>els.file.click();$('#scoreboardBtn').onclick=()=>{location.href='./scoreboard/'};$('#updateBtn').onclick=()=>{if('serviceWorker'in navigator)navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.update()))).finally(()=>location.reload());else location.reload()};$('#armiesBtn').onclick=()=>{populateArmyDialog();els.dialog.showModal()};$('#applyArmies').onclick=e=>{e.preventDefault();state.selectedArmies=[...els.checklist.querySelectorAll('input:checked')].map(x=>x.value);buildTabs();state.activeTab=state.tabs[0]?.id||null;save();els.dialog.close();renderAll()};els.search.oninput=renderBrowser;$('#clearSearch').onclick=()=>{els.search.value='';renderBrowser()};els.wake.onchange=()=>{els.wake.value=norm(els.wake.value)||'check';save();restartVoice()};els.mic.onclick=()=>{state.micOn=!state.micOn;save();if(state.micOn){ensureSelectedMic(false).finally(restartVoice)}else{stopVoice();stopMicStream()}updateMic();updateVoice()};
-els.micCheck.onclick=()=>ensureSelectedMic(true);
-els.micSelect.onchange=()=>{state.micDeviceId=els.micSelect.value;save();ensureSelectedMic(true)};
+$('#importBtn').onclick=()=>els.file.click();$('#scoreboardBtn').onclick=()=>{location.href='./scoreboard/'};$('#updateBtn').onclick=()=>{if('serviceWorker'in navigator)navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.update()))).finally(()=>location.reload());else location.reload()};$('#armiesBtn').onclick=()=>{populateArmyDialog();els.dialog.showModal()};$('#applyArmies').onclick=e=>{e.preventDefault();state.selectedArmies=[...els.checklist.querySelectorAll('input:checked')].map(x=>x.value);buildTabs();state.activeTab=state.tabs[0]?.id||null;save();els.dialog.close();renderAll()};els.search.oninput=renderBrowser;$('#clearSearch').onclick=()=>{els.search.value='';renderBrowser()};els.wake.onchange=()=>{els.wake.value=norm(els.wake.value)||'check';save();restartVoice()};els.mic.onclick=async()=>{
+  state.micOn=!state.micOn;save();
+  if(state.micOn){
+    const ok=await ensureSelectedMic(false);
+    if(ok)restartVoice();
+  }else{
+    stopVoice();stopMicStream();
+  }
+  updateMic();updateVoice();
+};
+els.micCheck.onclick=async()=>{
+  const ok=await ensureSelectedMic(true);
+  if(ok&&state.micOn)restartVoice();
+};
+els.micSelect.onchange=async()=>{
+  state.micDeviceId=els.micSelect.value;
+  save();
+  stopVoice();
+  const ok=await ensureSelectedMic(true);
+  if(ok&&state.micOn)restartVoice();
+};
 function updateMic(){els.mic.textContent=state.micOn?'MIC ON':'MIC OFF';els.mic.className='btn '+(state.micOn?'mic-on':'mic-off')}
 function updateVoice(){const w=norm(els.wake.value)||'check';els.status.innerHTML='<span class="voice-dot"></span>'+(state.micOn?(state.wakeArmed?'LISTENING…':'WAITING FOR “'+esc(w.toUpperCase())+'”'):'MIC OFF')}
 function cycle(){if(!state.tabs.length)return;let i=state.tabs.findIndex(x=>x.id===state.activeTab);state.activeTab=state.tabs[(i+1)%state.tabs.length].id;els.search.value='';save();renderAll();toast('Switched list')}
@@ -216,16 +234,21 @@ async function ensureSelectedMic(showToast=false){
     stopMicStream();
     const audio=state.micDeviceId?{deviceId:{exact:state.micDeviceId}}:true;
     const stream=await navigator.mediaDevices.getUserMedia({audio});
-    state.micStream=stream;
     const track=stream.getAudioTracks()[0];
+    if(!track)throw new Error('No audio track');
+    state.micStream=stream;
     try{track.contentHint='speech-recognition'}catch{}
-    const actual=track?.getSettings?.().deviceId||state.micDeviceId||'';
-    if(actual){state.micDeviceId=actual;localStorage.setItem(MIC_DEVICE_KEY,actual)}
+    const actual=track.getSettings?.().deviceId||state.micDeviceId||'';
+    if(actual){
+      state.micDeviceId=actual;
+      localStorage.setItem(MIC_DEVICE_KEY,actual);
+    }
     startMicMeter(stream);
     await refreshMicDevices(false);
-    if(state.micDeviceId)els.micSelect.value=state.micDeviceId;
-    if(showToast)toast('Mic ready: '+(track?.label||'selected microphone'));
-    if(state.micOn)restartVoice();
+    if(state.micDeviceId&&[...els.micSelect.options].some(o=>o.value===state.micDeviceId)){
+      els.micSelect.value=state.micDeviceId;
+    }
+    if(showToast)toast('Using '+(track.label||'selected microphone')+' for voice');
     return true;
   }catch(e){
     if(showToast)toast(e?.name==='NotAllowedError'?'Microphone permission was blocked':'Could not open that microphone');
@@ -233,15 +256,31 @@ async function ensureSelectedMic(showToast=false){
   }
 }
 function startRecognition(r){
-  // Web Speech recognition is most reliable when the browser opens its own
-  // speech input. Passing a MediaStreamTrack is experimental and caused Chrome
-  // to hear the MIC CHECK stream but never return recognition results.
-  try{r.start()}catch{}
+  const track=state.micStream?.getAudioTracks?.()[0];
+  if(!track||track.readyState!=='live'){
+    els.status.textContent='VOICE ERROR: NO ACTIVE MICROPHONE';
+    return;
+  }
+  try{r.start(track)}
+  catch(e){els.status.textContent='VOICE ERROR: '+String(e?.name||'START FAILED').toUpperCase()}
 }
 
 const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
 function stopVoice(){if(state.recognition){try{state.recognition.onend=null;state.recognition.abort()}catch{}state.recognition=null}}
 function restartVoice(){stopVoice();if(!state.micOn||!Speech)return;const r=new Speech();state.recognition=r;r.continuous=true;r.interimResults=false;r.lang='en-GB';r.onresult=e=>{const text=norm(e.results[e.results.length-1][0].transcript),wake=norm(els.wake.value)||'check';let cmd='';if(state.wakeArmed)cmd=text;else if(text===wake){state.wakeArmed=true;updateVoice();return}else if(text.startsWith(wake+' '))cmd=text.slice(wake.length).trim();else return;if(cmd==='switch'){state.wakeArmed=false;cycle();updateVoice();return}if(['scoreboard','score board','scores','score'].includes(cmd)){location.href='./scoreboard/';return}if(['roll','roll dice','roll attacks'].includes(cmd)){const b=document.querySelector('#rollUnitBtn');if(b)b.click();else toast('Open a unit from an imported list first');state.wakeArmed=false;updateVoice();return}if(['strats','stratagems','strategems','core strats'].includes(cmd)){renderRef('strats');state.wakeArmed=false;updateVoice();return}const m=matches(cmd,unitsFor())[0];if(m){els.search.value=cmd;renderBrowser();renderUnit(m.u);state.wakeArmed=false;updateVoice()}};r.onend=()=>{if(state.micOn)setTimeout(restartVoice,400)};r.onerror=e=>{if(e?.error==='not-allowed'||e?.error==='service-not-allowed')state.micOn=false;updateMic();if(e?.error&&e.error!=='aborted'&&e.error!=='no-speech')els.status.textContent='VOICE ERROR: '+String(e.error).toUpperCase();};startRecognition(r)}
-function setupVoice(){updateMic();refreshMicDevices(false);if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>refreshMicDevices(false));if(!Speech){state.micOn=false;updateMic();els.status.textContent='VOICE NOT SUPPORTED';return}restartVoice();updateVoice()}
-loadSaved();load().catch(e=>{console.error(e);els.card.innerHTML='<div class="empty-card"><div class="empty-title">Could not load data</div><div>'+esc(e.message)+'</div></div>'});if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./service-worker.js?v=0.8').catch(()=>{});
+async function setupVoice(){
+  updateMic();
+  await refreshMicDevices(false);
+  if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>refreshMicDevices(false));
+  if(!Speech){
+    state.micOn=false;updateMic();els.status.textContent='VOICE NOT SUPPORTED';return;
+  }
+  if(state.micOn){
+    const ok=await ensureSelectedMic(false);
+    if(ok)restartVoice();
+    else els.status.textContent='MICROPHONE PERMISSION NEEDED';
+  }
+  updateVoice();
+}
+loadSaved();load().catch(e=>{console.error(e);els.card.innerHTML='<div class="empty-card"><div class="empty-title">Could not load data</div><div>'+esc(e.message)+'</div></div>'});if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./service-worker.js?v=1.0').catch(()=>{});
 })();
