@@ -1,5 +1,5 @@
-const CACHE='quicksheet-web-v11';
-const SHELL=['./','./index.html','./styles.css?v=1.0','./app.js?v=1.1','./roll.js?v=0.2','./manifest.webmanifest','./icons/quicksheet.svg','./scoreboard/','./scoreboard/index.html','./scoreboard/scoreboard.css?v=0.4','./scoreboard/scoreboard.js?v=0.6'];
+const CACHE='quicksheet-web-v12';
+const SHELL=['./','./index.html','./styles.css?v=1.0','./app.js?v=1.2','./roll.js?v=0.2','./manifest.webmanifest','./icons/quicksheet.svg','./scoreboard/','./scoreboard/index.html','./scoreboard/scoreboard.css?v=0.4','./scoreboard/scoreboard.js?v=0.6'];
 
 self.addEventListener('install', event => {
   event.waitUntil(
