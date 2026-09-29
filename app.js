@@ -9,8 +9,66 @@ const norm=s=>String(s??'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u0
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 const toast=m=>{els.toast.textContent=m;els.toast.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>els.toast.classList.remove('show'),1800)};
 const aliases={windriders:['wind riders','win riders','wind writers'],rangers:['ranges','ranger'],wraithlord:['wraith lord','wraith lot'],wraithguard:['wraith guard']};
-function score(q,name){q=norm(q);name=norm(name);if(!q||!name)return 0;if(q===name)return 100;if(name.includes(q)||q.includes(name))return 92;for(const a of aliases[name]||[])if(norm(a)===q)return 99;let same=0;for(let i=0;i<Math.min(q.length,name.length);i++){if(q[i]!==name[i])break;same++}return same>=4?70+Math.min(20,same):0}
-function matches(q,units){return units.map(u=>({u,s:score(q,u.name)})).filter(x=>x.s>35).sort((a,b)=>b.s-a.s).slice(0,20)}
+function levenshtein(a,b){
+  a=String(a||'');b=String(b||'');
+  if(a===b)return 0;
+  if(!a.length)return b.length;
+  if(!b.length)return a.length;
+  const prev=Array.from({length:b.length+1},(_,i)=>i);
+  const cur=new Array(b.length+1);
+  for(let i=1;i<=a.length;i++){
+    cur[0]=i;
+    for(let j=1;j<=b.length;j++){
+      cur[j]=Math.min(
+        cur[j-1]+1,
+        prev[j]+1,
+        prev[j-1]+(a[i-1]===b[j-1]?0:1)
+      );
+    }
+    for(let j=0;j<=b.length;j++)prev[j]=cur[j];
+  }
+  return prev[b.length];
+}
+function fuzzySimilarity(a,b){
+  a=norm(a);b=norm(b);
+  if(!a||!b)return 0;
+  const d=levenshtein(a,b);
+  return 1-(d/Math.max(a.length,b.length));
+}
+function score(q,name){
+  q=norm(q);name=norm(name);
+  if(!q||!name)return 0;
+  if(q===name)return 100;
+  for(const a of aliases[name]||[])if(norm(a)===q)return 99;
+  if(name.includes(q)||q.includes(name))return 94;
+
+  // Whole-name typo tolerance: "marshall" -> "marshal", "castellen" -> "castellan".
+  const whole=fuzzySimilarity(q,name);
+  if(whole>=0.88)return 96;
+  if(whole>=0.80)return 90;
+  if(whole>=0.72)return 82;
+
+  // Also compare individual words so voice recognition can be slightly wrong
+  // when the datasheet name contains several words.
+  const qWords=q.split(' ').filter(Boolean);
+  const nWords=name.split(' ').filter(Boolean);
+  let bestWord=0;
+  for(const qw of qWords){
+    if(qw.length<4)continue;
+    for(const nw of nWords){
+      if(nw.length<4)continue;
+      bestWord=Math.max(bestWord,fuzzySimilarity(qw,nw));
+    }
+  }
+  if(bestWord>=0.88)return 88;
+  if(bestWord>=0.80)return 80;
+  if(bestWord>=0.72)return 72;
+
+  let same=0;
+  for(let i=0;i<Math.min(q.length,name.length);i++){if(q[i]!==name[i])break;same++}
+  return same>=4?60+Math.min(10,same):0;
+}
+function matches(q,units){return units.map(u=>({u,s:score(q,u.name)})).filter(x=>x.s>=60).sort((a,b)=>b.s-a.s||String(a.u.name).localeCompare(String(b.u.name))).slice(0,20)}
 function group(u){const k=new Set((u.keywords||[]).map(norm));if(k.has('epic hero'))return'EPIC CHARACTERS';if(k.has('character'))return'CHARACTERS';if(k.has('infantry'))return'INFANTRY';if(k.has('mounted'))return'MOUNTED';if(k.has('vehicle'))return'VEHICLES';if(k.has('monster'))return'MONSTERS';if(k.has('aircraft'))return'AIRCRAFT';if(k.has('beast'))return'BEASTS';if(k.has('swarm'))return'SWARMS';if(k.has('fortification'))return'FORTIFICATIONS';return'OTHER'}
 function save(){localStorage.setItem('qs.web',JSON.stringify({selectedArmies:state.selectedArmies,wake:els.wake.value,micOn:state.micOn,rosters:state.rosters,activeTab:state.activeTab}));if(state.micDeviceId)localStorage.setItem(MIC_DEVICE_KEY,state.micDeviceId)}
 function loadSaved(){try{const p=JSON.parse(localStorage.getItem('qs.web')||'{}');state.selectedArmies=p.selectedArmies||[];state.rosters=p.rosters||[];state.micOn=p.micOn!==false;state.activeTab=p.activeTab||null;els.wake.value=p.wake||'check'}catch{}state.micDeviceId=localStorage.getItem(MIC_DEVICE_KEY)||''}
