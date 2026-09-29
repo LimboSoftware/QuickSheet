@@ -8,7 +8,7 @@
   <title>40K QuickSheet</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/quicksheet.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=0.8">
+  <link rel="stylesheet" href="styles.css?v=0.9">
 </head>
 <body>
   <div id="app">
@@ -30,9 +30,7 @@
           <button id="clearSearch" class="icon-btn" title="Clear search">×</button>
         </div>
         <div class="mic-picker">
-          <select id="micSelect" class="mic-select" aria-label="Microphone">
-            <option value="">DEFAULT MICROPHONE</option>
-          </select>
+          <span class="mic-source">BROWSER DEFAULT MIC</span>
           <button id="micCheck" class="btn btn-subtle mic-check" type="button">MIC CHECK</button>
           <div class="mic-meter" title="Microphone level"><span id="micLevel"></span></div>
         </div>
@@ -152,7 +150,7 @@
     </form>
   </dialog>
   <div id="toast" class="toast" aria-live="polite"></div>
-  <script src="app.js?v=0.8"></script>
+  <script src="app.js?v=0.9"></script>
   <script src="roll.js?v=0.2"></script>
 </body>
 </html>
