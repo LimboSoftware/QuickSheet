@@ -292,10 +292,24 @@ const numberWords={
   eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20
 };
 function parseNumber(s){
-  const m=String(s).match(/\b\d+\b/);
-  if(m)return Number(m[0]);
-  for(const [w,n] of Object.entries(numberWords))if(new RegExp('\\b'+w+'\\b').test(s))return n;
+  const text=norm(s);
+  const digits=[...text.matchAll(/\b\d+\b/g)];
+  if(digits.length)return Number(digits[digits.length-1][0]);
+  const tokens=text.split(' ').filter(Boolean);
+  for(let i=tokens.length-1;i>=0;i--){
+    if(Object.prototype.hasOwnProperty.call(numberWords,tokens[i]))return numberWords[tokens[i]];
+  }
   return null;
+}
+function parseScoreAmount(cmd){
+  // Ignore the number in "player one/two" and take the last spoken number as
+  // the VP amount. This makes "player one primary five" score 5, not 1.
+  const stripped=norm(cmd)
+    .replace(/\bplayer\s*(?:1|one)\b/g,' ')
+    .replace(/\bplayer\s*(?:2|two)\b/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  return parseNumber(stripped);
 }
 function playerIndex(cmd){
   if(/\b(player ?1|player one|one)\b/.test(cmd))return 0;
@@ -314,8 +328,8 @@ function processCommand(raw){
   if(cmd==='next round'||cmd==='round next'){setRound(state.round+1);return}
   if(cmd==='previous round'||cmd==='prev round'||cmd==='round back'){setRound(state.round-1);return}
   if(cmd==='undo'||cmd==='undo score'||cmd==='undo last'){els.undo.click();return}
-  if(cmd==='reset scores'||cmd==='reset scoreboard'){
-    state.pendingReset=true;toast('Say “check confirm reset” to reset');return;
+  if(cmd==='reset scores'||cmd==='reset scoreboard'||cmd==='new match'||cmd==='start new match'){
+    state.pendingReset=true;els.resetDialog.showModal();toast('New match reset ready');return;
   }
   if(cmd==='confirm reset'&&state.pendingReset){
     state.pendingReset=false;els.confirmReset.click();return;
@@ -332,7 +346,7 @@ function processCommand(raw){
     snapshot();state.players[pi].battleReady=!/\b(no|off|remove|not)\b/.test(cmd);save();render();toast(state.players[pi].name+' Battle Ready '+(state.players[pi].battleReady?'ON':'OFF'));return;
   }
   const type=scoreType(cmd,pi);
-  const n=parseNumber(cmd);
+  const n=parseScoreAmount(cmd);
   if(n==null){
     if(/\bprimary\b/.test(cmd)||/\bsecondary\b/.test(cmd)){
       state.players[pi].activeType=type;save();render();toast(state.players[pi].name+' '+type.toUpperCase()+' selected');
