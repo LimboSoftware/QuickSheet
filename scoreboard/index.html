@@ -14,7 +14,7 @@
       <div class="top-actions">
         <a class="btn subtle" href="../">QUICKSHEET</a>
         <button id="undoBtn" class="btn subtle" type="button">UNDO</button>
-        <button id="resetBtn" class="btn danger" type="button">RESET</button>
+        <button id="resetBtn" class="btn danger" type="button">NEW MATCH</button>
       </div>
       <div class="voice-row">
         <div id="roundLabel" class="round-pill">BATTLE ROUND 1 / 5</div>
@@ -63,6 +63,7 @@
           <code>score player one add five</code>
           <code>score next round</code>
           <code>score undo</code>
+          <code>score new match</code>
           <code>score player two battle ready</code>
         </div>
         <p id="commandNote">If you say “add five” without Primary/Secondary, it adds to that player's last-selected score type.</p>
@@ -73,16 +74,16 @@
 
     <dialog id="resetDialog">
       <form method="dialog" class="dialog-card">
-        <h2>Reset scoreboard?</h2>
-        <p>This clears both players and all five battle rounds.</p>
+        <h2>Start a new match?</h2>
+        <p>This resets both players to 0 VP and clears all five battle rounds.</p>
         <div class="dialog-actions">
           <button value="cancel" class="btn subtle">CANCEL</button>
-          <button id="confirmReset" value="default" class="btn danger">RESET SCORES</button>
+          <button id="confirmReset" value="default" class="btn danger">START NEW MATCH</button>
         </div>
       </form>
     </dialog>
 
-    <script src="scoreboard.js?v=0.6"></script>
+    <script src="scoreboard.js?v=0.7"></script>
   </div>
 </body>
 </html>
