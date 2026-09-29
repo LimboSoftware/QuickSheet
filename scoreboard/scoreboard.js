@@ -250,13 +250,27 @@ els.confirmReset.onclick=e=>{
 els.wake.onchange=()=>{
   els.wake.value=norm(els.wake.value)||'score';save();restartVoice();
 };
-els.mic.onclick=()=>{
+els.mic.onclick=async()=>{
   state.micOn=!state.micOn;save();
-  if(state.micOn){ensureSelectedMic(false).then(ok=>{if(!ok)restartVoice()})}else{stopVoice();stopMicStream()}
+  if(state.micOn){
+    const ok=await ensureSelectedMic(false);
+    if(ok)restartVoice();
+  }else{
+    stopVoice();stopMicStream();
+  }
   updateMic();updateVoice();
 };
-els.micCheck.onclick=()=>ensureSelectedMic(true);
-els.micSelect.onchange=()=>{state.micDeviceId=els.micSelect.value;save();ensureSelectedMic(true)};
+els.micCheck.onclick=async()=>{
+  const ok=await ensureSelectedMic(true);
+  if(ok&&state.micOn)restartVoice();
+};
+els.micSelect.onchange=async()=>{
+  state.micDeviceId=els.micSelect.value;
+  save();
+  stopVoice();
+  const ok=await ensureSelectedMic(true);
+  if(ok&&state.micOn)restartVoice();
+};
 
 function updateMic(){
   els.mic.textContent=state.micOn?'MIC ON':'MIC OFF';
@@ -389,16 +403,21 @@ async function ensureSelectedMic(showToast=false){
     stopMicStream();
     const audio=state.micDeviceId?{deviceId:{exact:state.micDeviceId}}:true;
     const stream=await navigator.mediaDevices.getUserMedia({audio});
-    state.micStream=stream;
     const track=stream.getAudioTracks()[0];
+    if(!track)throw new Error('No audio track');
+    state.micStream=stream;
     try{track.contentHint='speech-recognition'}catch{}
-    const actual=track?.getSettings?.().deviceId||state.micDeviceId||'';
-    if(actual){state.micDeviceId=actual;localStorage.setItem(MIC_DEVICE_KEY,actual)}
+    const actual=track.getSettings?.().deviceId||state.micDeviceId||'';
+    if(actual){
+      state.micDeviceId=actual;
+      localStorage.setItem(MIC_DEVICE_KEY,actual);
+    }
     startMicMeter(stream);
     await refreshMicDevices(false);
-    if(state.micDeviceId)els.micSelect.value=state.micDeviceId;
-    if(showToast)toast('Mic ready: '+(track?.label||'selected microphone'));
-    if(state.micOn)restartVoice();
+    if(state.micDeviceId&&[...els.micSelect.options].some(o=>o.value===state.micDeviceId)){
+      els.micSelect.value=state.micDeviceId;
+    }
+    if(showToast)toast('Using '+(track.label||'selected microphone')+' for voice');
     return true;
   }catch(e){
     if(showToast)toast(e?.name==='NotAllowedError'?'Microphone permission was blocked':'Could not open that microphone');
@@ -406,9 +425,13 @@ async function ensureSelectedMic(showToast=false){
   }
 }
 function startRecognition(r){
-  // Keep mic selection/check separate from Web Speech recognition. The
-  // MediaStreamTrack form of start() is not dependable across browsers.
-  try{r.start()}catch{}
+  const track=state.micStream?.getAudioTracks?.()[0];
+  if(!track||track.readyState!=='live'){
+    els.voice.textContent='VOICE ERROR: NO ACTIVE MICROPHONE';
+    return;
+  }
+  try{r.start(track)}
+  catch(e){els.voice.textContent='VOICE ERROR: '+String(e?.name||'START FAILED').toUpperCase()}
 }
 
 const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -439,9 +462,9 @@ function restartVoice(){
   r.onerror=e=>{if(e?.error==='not-allowed'||e?.error==='service-not-allowed')state.micOn=false;updateMic();if(e?.error&&e.error!=='aborted'&&e.error!=='no-speech')els.voice.textContent='VOICE ERROR: '+String(e.error).toUpperCase();};
   startRecognition(r)
 }
-function setupVoice(){
+async function setupVoice(){
   updateMic();
-  refreshMicDevices(false);
+  await refreshMicDevices(false);
   if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>refreshMicDevices(false));
   if(!Speech){
     state.micOn=false;
@@ -449,7 +472,11 @@ function setupVoice(){
     els.voice.textContent='VOICE NOT SUPPORTED IN THIS BROWSER';
     return;
   }
-  restartVoice();
+  if(state.micOn){
+    const ok=await ensureSelectedMic(false);
+    if(ok)restartVoice();
+    else els.voice.textContent='MICROPHONE PERMISSION NEEDED';
+  }
   updateVoice();
 }
 
