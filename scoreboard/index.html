@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0e1a22">
   <title>40K QuickSheet Scoreboard</title>
-  <link rel="stylesheet" href="scoreboard.css?v=0.1">
+  <link rel="stylesheet" href="scoreboard.css?v=0.2">
 </head>
 <body>
   <div id="scoreApp">
@@ -23,6 +23,13 @@
         <div class="grow"></div>
         <label for="wakeWord">Wake word:</label>
         <input id="wakeWord" class="wake-input" value="score" autocomplete="off" spellcheck="false">
+        <div class="mic-picker">
+          <select id="micSelect" class="mic-select" aria-label="Microphone">
+            <option value="">DEFAULT MICROPHONE</option>
+          </select>
+          <button id="micCheck" class="btn subtle mic-check" type="button">MIC CHECK</button>
+          <div class="mic-meter" title="Microphone level"><span id="micLevel"></span></div>
+        </div>
         <button id="micToggle" class="btn mic-on" type="button">MIC ON</button>
         <div id="voiceStatus" class="voice-status"><span class="voice-dot"></span>WAITING FOR “SCORE”</div>
       </div>
@@ -75,7 +82,7 @@
       </form>
     </dialog>
 
-    <script src="scoreboard.js?v=0.1"></script>
+    <script src="scoreboard.js?v=0.2"></script>
   </div>
 </body>
 </html>
